@@ -1,0 +1,44 @@
+name: P4I Office CI
+
+on:
+  push:
+    branches: [ "main", "sprint-*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-and-build:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Security Check & Environment Verification
+        run: |
+          echo "Checking environment variables template..."
+          test -f .env.example
+          # Ensure numbering active flag is false by default
+          grep -q 'FEATURE_NUMBERING_ACTIVE="false"' .env.example
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run Unit & Security Tests
+        run: npm run test
+
+      - name: Production Build
+        run: npm run build

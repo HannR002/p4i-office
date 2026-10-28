@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Environment files
+.env
+.env*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# OS / Editor files
+.DS_Store
+*.pem
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Temp files
+*.tmp
+*.tsbuildinfo
+*.zip
+_srs_extracted.txt
+_kickoff_extracted.txt
+_sprint0_extracted.txt
+
