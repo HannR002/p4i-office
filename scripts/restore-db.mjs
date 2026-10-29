@@ -10,8 +10,12 @@ pg.types.setTypeParser(1082, (val) => val);
 
 const TABLES_IN_REVERSE_ORDER = [
   'audit_events',
+  'letter_status_history',
+  'approval_steps',
+  'approval_requests',
   'letter_revisions',
   'letters',
+  'signatory_mandates',
   'letter_types',
   'numbering_policies',
   'user_roles',
@@ -105,29 +109,27 @@ export async function restoreDatabase(targetDbName = 'p4i_office_restore_test', 
     let allContentString = '';
 
     for (const tableName of TABLES_IN_ORDER) {
-      const rows = data[tableName];
-      if (!rows || rows.length === 0) {
-        continue;
-      }
+      const rows = data[tableName] || [];
+      if (rows.length > 0) {
+        console.log(`[P4I-RESTORE] Merestorasi tabel '${tableName}' (${rows.length} baris)...`);
 
-      console.log(`[P4I-RESTORE] Merestorasi tabel '${tableName}' (${rows.length} baris)...`);
+        for (const row of rows) {
+          const columns = Object.keys(row);
+          const colNames = columns.map((c) => `"${c}"`).join(', ');
+          const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+          const values = columns.map((c) => {
+            const val = row[c];
+            // Handle object/array for JSONB columns if needed
+            if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
+              return JSON.stringify(val);
+            }
+            return val;
+          });
 
-      for (const row of rows) {
-        const columns = Object.keys(row);
-        const colNames = columns.map((c) => `"${c}"`).join(', ');
-        const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-        const values = columns.map((c) => {
-          const val = row[c];
-          // Handle object/array for JSONB columns if needed
-          if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
-            return JSON.stringify(val);
-          }
-          return val;
-        });
-
-        const insertQuery = `INSERT INTO "${tableName}" (${colNames}) VALUES (${placeholders});`;
-        await client.query(insertQuery, values);
-        restoredRowsCount++;
+          const insertQuery = `INSERT INTO "${tableName}" (${colNames}) VALUES (${placeholders});`;
+          await client.query(insertQuery, values);
+          restoredRowsCount++;
+        }
       }
 
       const verifyRes = await client.query(`SELECT * FROM "${tableName}" ORDER BY 1 ASC`);

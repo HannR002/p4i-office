@@ -28,12 +28,12 @@ export function Navbar({ user }: NavbarProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-      {/* Top Banner Safety Guard Sprint 1A */}
+      {/* Top Banner Safety Guard Sprint 2 */}
       <div className="bg-amber-500 text-slate-950 px-4 py-1 text-xs font-medium flex items-center justify-between">
         <div className="flex items-center gap-1.5 container mx-auto">
           <ShieldAlert className="w-3.5 h-3.5 text-slate-950" />
           <span>
-            <strong>MODE SPRINT 1A:</strong> Penomoran resmi OFF • Tanda tangan OFF • Pratinjau draf berlabel nonresmi • Data kop belum diverifikasi
+            <strong>MODE SPRINT 2:</strong> Alur Persetujuan & Mandat Pejabat • Penomoran resmi OFF • Tanda tangan final OFF • Pratinjau draf berlabel nonresmi
           </span>
         </div>
       </div>
@@ -60,7 +60,7 @@ export function Navbar({ user }: NavbarProps) {
               <div>
                 <span className="font-semibold text-slate-800">{user.displayName}</span>
                 <span className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700">
-                  {user.role === "SYSTEM_ADMIN" ? "Admin Sistem" : "Staf"}
+                  {user.role === "SYSTEM_ADMIN" ? "Admin Sistem" : user.role === "REVIEWER" ? "Reviewer Pejabat" : "Staf"}
                 </span>
               </div>
             </div>

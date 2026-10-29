@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import { db } from "@/lib/db";
+import { db, UserRole } from "@/lib/db";
 
 export const SESSION_COOKIE_NAME = "p4i_office_session";
 
@@ -9,7 +9,7 @@ export interface SessionUser {
   organizationId: string;
   email: string;
   displayName: string;
-  role: "SYSTEM_ADMIN" | "STAFF";
+  role: UserRole;
   status: "ACTIVE" | "DISABLED" | "INVITED";
 }
 

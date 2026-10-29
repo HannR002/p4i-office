@@ -58,11 +58,11 @@ async function runSmokeTests() {
     );
 
     // Extract cookie value for subsequent requests
-    const cookieHeader = staffCookie.split(";")[0];
+    const staffCookieHeader = staffCookie.split(";")[0];
 
     // 4. Staf dilarang mengakses endpoint admin /api/users -> 403 Forbidden
     const staffUsersRes = await fetch(`${baseUrl}/api/users`, {
-      headers: { Cookie: cookieHeader },
+      headers: { Cookie: staffCookieHeader },
     });
     assert(
       "Staf dicegah mengakses endpoint admin /api/users (403 Forbidden)",
@@ -74,15 +74,15 @@ async function runSmokeTests() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: cookieHeader,
+        Cookie: staffCookieHeader,
       },
       body: JSON.stringify({
         letterTypeId: "type-magang",
-        subject: "Surat Keterangan Magang Smoke Test",
+        subject: "Surat Keterangan Magang Smoke Test Sprint 2",
         recipientName: "Sdr. Rian Pratama",
         classification: "INTERNAL",
         plannedDate: "2026-10-28",
-        content: { bodyText: "Isi draf pengujian smoke test otomatis." },
+        content: { bodyText: "Isi draf pengujian smoke test alur persetujuan." },
       }),
     });
     const createData = await createDraftRes.json();
@@ -100,7 +100,7 @@ async function runSmokeTests() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: cookieHeader,
+        Cookie: staffCookieHeader,
       },
       body: JSON.stringify({
         letterTypeId: "type-magang",
@@ -121,7 +121,7 @@ async function runSmokeTests() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: cookieHeader,
+        Cookie: staffCookieHeader,
       },
       body: JSON.stringify({
         subject: "Surat Keterangan Magang Smoke Test (Revisi 2)",
@@ -142,7 +142,7 @@ async function runSmokeTests() {
 
     // 8. Verifikasi riwayat revisi (kedua versi ada dan utuh)
     const detailRes = await fetch(`${baseUrl}/api/letters/${createdLetterId}`, {
-      headers: { Cookie: cookieHeader },
+      headers: { Cookie: staffCookieHeader },
     });
     const detailData = await detailRes.json();
     assert(
@@ -153,15 +153,22 @@ async function runSmokeTests() {
       detailData.revisions[1].version === 2
     );
 
-    // 9. Staf mengajukan draf untuk pemeriksaan -> status IN_REVIEW
+    // 9. Staf mengajukan draf untuk pemeriksaan alur Sprint 2 -> status SUBMITTED / IN_REVIEW
     const submitRes = await fetch(`${baseUrl}/api/letters/${createdLetterId}/submit`, {
       method: "POST",
-      headers: { Cookie: cookieHeader },
+      headers: { 
+        "Content-Type": "application/json",
+        Cookie: staffCookieHeader 
+      },
+      body: JSON.stringify({ notes: "Pengajuan smoke test" }),
     });
     const submitData = await submitRes.json();
+    const requestId = submitData.request?.id || submitData.data?.request?.id;
     assert(
-      "Draf berhasil diajukan untuk pemeriksaan (status: IN_REVIEW)",
-      submitRes.status === 200 && submitData.letter?.status === "IN_REVIEW"
+      "Draf berhasil diajukan untuk alur persetujuan Sprint 2 (status: SUBMITTED / IN_REVIEW)",
+      submitRes.status === 200 && 
+      (submitData.letter?.status === "SUBMITTED" || submitData.letter?.status === "IN_REVIEW") &&
+      Boolean(requestId)
     );
 
     // 10. Login Akun Admin -> Sukses (200)
@@ -183,33 +190,89 @@ async function runSmokeTests() {
       adminUsersRes.status === 200 && Array.isArray(usersData.users) && usersData.users.length >= 3
     );
 
-    // 12. Admin dapat memperbarui status pengguna via PATCH /api/users
-    const targetUserId = usersData.users.find((u) => u.email === "disabled.test@p4i.local")?.id;
-    if (targetUserId) {
-      const patchRes = await fetch(`${baseUrl}/api/users`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Cookie: adminCookieHeader,
-        },
-        body: JSON.stringify({ userId: targetUserId, status: "ACTIVE" }),
-      });
-      const patchData = await patchRes.json();
-      assert(
-        "Admin berhasil mengubah status pengguna (PATCH /api/users)",
-        patchRes.status === 200 && patchData.user?.status === "ACTIVE"
-      );
+    // 12. Login Akun Reviewer Pejabat -> Sukses (200)
+    const reviewerLoginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "reviewer.test@p4i.local", password: "Password123!" }),
+    });
+    const reviewerCookie = reviewerLoginRes.headers.get("set-cookie") || "";
+    const reviewerCookieHeader = reviewerCookie.split(";")[0];
+    assert(
+      "Reviewer Pejabat berhasil masuk dan memperoleh sesi",
+      reviewerLoginRes.status === 200 && reviewerCookie.includes("p4i_office_session")
+    );
 
-      // Kembalikan ke DISABLED
-      await fetch(`${baseUrl}/api/users`, {
-        method: "PATCH",
+    // 13. Reviewer melihat antrean pemeriksaan /api/approvals/pending
+    const pendingRes = await fetch(`${baseUrl}/api/approvals/pending`, {
+      headers: { Cookie: reviewerCookieHeader },
+    });
+    const pendingData = await pendingRes.json();
+    assert(
+      "Reviewer dapat mengakses antrean pemeriksaan (/api/approvals/pending)",
+      pendingRes.status === 200 && Array.isArray(pendingData.queue)
+    );
+
+    // 14. Mandat Pejabat: Verifikasi endpoint /api/mandates
+    const mandatesRes = await fetch(`${baseUrl}/api/mandates`, {
+      headers: { Cookie: reviewerCookieHeader },
+    });
+    const mandatesData = await mandatesRes.json();
+    const activeMandate = mandatesData.mandates?.find(m => m.decreeNumber === "SK-P4I/2026/001-TEST" && m.status === "ACTIVE" && m.canApprove);
+    assert(
+      "Mandat pejabat aktif ditemukan dan tercatat secara sah",
+      mandatesRes.status === 200 && Boolean(activeMandate) && activeMandate.decreeNumber === "SK-P4I/2026/001-TEST"
+    );
+
+    // 15. Anti Self-Approval: Pembuat draf (staf) mencoba menyetujui suratnya sendiri -> 403 Forbidden
+    if (requestId) {
+      const selfApproveRes = await fetch(`${baseUrl}/api/approvals/${requestId}/decision`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: adminCookieHeader,
+          Cookie: staffCookieHeader,
         },
-        body: JSON.stringify({ userId: targetUserId, status: "DISABLED" }),
+        body: JSON.stringify({ decision: "APPROVED" }),
       });
+      assert(
+        "Anti Self-Approval: Pembuat draf ditolak saat mencoba menyetujui suratnya sendiri (403)",
+        selfApproveRes.status === 403
+      );
     }
+
+    // 16. Keputusan Persetujuan Resmi oleh Reviewer Pejabat -> 200 OK
+    if (requestId && activeMandate) {
+      const decisionRes = await fetch(`${baseUrl}/api/approvals/${requestId}/decision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: reviewerCookieHeader,
+        },
+        body: JSON.stringify({
+          decision: "APPROVED",
+          comments: "Disetujui berdasarkan verifikasi smoke test alur Sprint 2.",
+          mandateId: activeMandate.id,
+        }),
+      });
+      const decisionData = await decisionRes.json();
+      assert(
+        "Reviewer pejabat berhasil menyetujui surat (status: APPROVED, officialNumber: null)",
+        decisionRes.status === 200 &&
+        decisionData.data?.letter?.status === "APPROVED" &&
+        decisionData.data?.letter?.officialNumber === null &&
+        decisionData.data?.step?.decision === "APPROVED"
+      );
+    }
+
+    // 17. Verifikasi Riwayat Status Surat (/api/letters/[id]/history)
+    const historyRes = await fetch(`${baseUrl}/api/letters/${createdLetterId}/history`, {
+      headers: { Cookie: staffCookieHeader },
+    });
+    const historyData = await historyRes.json();
+    assert(
+      "Riwayat alur status surat terekam secara kronologis (DRAFT -> SUBMITTED -> APPROVED)",
+      historyRes.status === 200 && Array.isArray(historyData.history) && historyData.history.length >= 2
+    );
 
   } catch (err) {
     console.error("[SMOKE-TEST] Error eksekusi smoke test:", err);

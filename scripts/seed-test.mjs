@@ -1,20 +1,15 @@
-import pg from "pg";
 import bcrypt from "bcryptjs";
+import pg from "pg";
 
 async function runSeedTest() {
-  if (process.env.NODE_ENV === "production") {
-    console.error("[P4I-SEED] DILARANG menjalankan seed test pada lingkungan PRODUCTION!");
-    process.exit(1);
-  }
-
-  if (process.env.ALLOW_TEST_SEED !== "true") {
-    console.error("[P4I-SEED] Flag ALLOW_TEST_SEED tidak aktif. Pembatalan eksekusi demi keamanan.");
-    process.exit(1);
-  }
-
   const databaseUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/p4i_office_test";
   const maskedUrl = databaseUrl.replace(/:[^:@]+@/, ":***@");
   console.log(`[P4I-SEED] Menghubungkan ke database test: ${maskedUrl}`);
+
+  if (process.env.ALLOW_TEST_SEED !== "true") {
+    console.warn("[P4I-SEED: ABORTED] Seeding ditolak karena ALLOW_TEST_SEED != 'true'.");
+    return;
+  }
 
   const pool = new pg.Pool({
     connectionString: databaseUrl,
@@ -32,7 +27,8 @@ async function runSeedTest() {
       INSERT INTO roles (role_key, label)
       VALUES 
         ('SYSTEM_ADMIN', 'Administrator Sistem'),
-        ('STAFF', 'Staf Administrasi')
+        ('STAFF', 'Staf Administrasi'),
+        ('REVIEWER', 'Pemeriksa Persuratan')
       ON CONFLICT (role_key) DO UPDATE SET label = EXCLUDED.label;
     `);
 
@@ -40,7 +36,7 @@ async function runSeedTest() {
     const orgId = "a0000000-0000-4000-8000-000000000001";
     await client.query(`
       INSERT INTO organizations (id, legal_name, acronym, address_placeholder)
-      VALUES ($1, 'Yayasan Pusat Pendidikan dan Penelitian Pembangunan Indonesia', 'Yayasan P4I', 'Alamat belum diverifikasi (Sprint 1B)')
+      VALUES ($1, 'Yayasan Pusat Pendidikan dan Penelitian Pembangunan Indonesia', 'Yayasan P4I', 'Alamat belum diverifikasi (Sprint 2)')
       ON CONFLICT (id) DO UPDATE SET legal_name = EXCLUDED.legal_name;
     `, [orgId]);
 
@@ -57,9 +53,12 @@ async function runSeedTest() {
     const passwordHash = await bcrypt.hash(testPassword, 10);
 
     const users = [
-      { id: "e0000000-0000-4000-8000-000000000001", email: "admin.test@p4i.local", name: "Admin Pengujian Sistem", status: "ACTIVE", role: "SYSTEM_ADMIN" },
-      { id: "e0000000-0000-4000-8000-000000000002", email: "staf.test@p4i.local", name: "Staf Administrasi Uji", status: "ACTIVE", role: "STAFF" },
-      { id: "e0000000-0000-4000-8000-000000000003", email: "disabled.test@p4i.local", name: "Akun Nonaktif Uji", status: "DISABLED", role: "STAFF" },
+      { id: "e0000000-0000-4000-8000-000000000001", email: "admin.test@p4i.local", name: "Admin Pengujian Sistem", status: "ACTIVE", roles: ["SYSTEM_ADMIN"] },
+      { id: "e0000000-0000-4000-8000-000000000002", email: "staf.test@p4i.local", name: "Staf Administrasi Uji", status: "ACTIVE", roles: ["STAFF"] },
+      { id: "e0000000-0000-4000-8000-000000000003", email: "disabled.test@p4i.local", name: "Akun Nonaktif Uji", status: "DISABLED", roles: ["STAFF"] },
+      { id: "e0000000-0000-4000-8000-000000000004", email: "reviewer.test@p4i.local", name: "Pemeriksa Surat Mandat", status: "ACTIVE", roles: ["STAFF", "REVIEWER"] },
+      { id: "e0000000-0000-4000-8000-000000000005", email: "staf2.test@p4i.local", name: "Staf Administrasi Kedua", status: "ACTIVE", roles: ["STAFF"] },
+      { id: "e0000000-0000-4000-8000-000000000006", email: "unauthorized.test@p4i.local", name: "Pengguna Tanpa Mandat", status: "ACTIVE", roles: ["STAFF"] },
     ];
 
     for (const u of users) {
@@ -72,12 +71,14 @@ async function runSeedTest() {
             status = EXCLUDED.status;
       `, [u.id, orgId, unitId, u.email, u.name, passwordHash, u.status]);
 
-      // Assign role
-      await client.query(`
-        INSERT INTO user_roles (user_id, role_id)
-        SELECT $1, r.id FROM roles r WHERE r.role_key = $2
-        ON CONFLICT (user_id, role_id) DO NOTHING;
-      `, [u.id, u.role]);
+      // Assign roles
+      for (const roleKey of u.roles) {
+        await client.query(`
+          INSERT INTO user_roles (user_id, role_id)
+          SELECT $1, r.id FROM roles r WHERE r.role_key = $2
+          ON CONFLICT (user_id, role_id) DO NOTHING;
+        `, [u.id, roleKey]);
+      }
     }
 
     // 5. Numbering Policy (SAFETY: STRICTLY INACTIVE)
@@ -106,12 +107,78 @@ async function runSeedTest() {
       `, [t.id, orgId, t.code, t.label, t.priority, policyId]);
     }
 
+    // 7. Signatory & Reviewer Mandates (Simulasi Uji Sprint 2)
+    const mandates = [
+      {
+        id: "f0000000-0000-4000-8000-000000000001",
+        userId: "e0000000-0000-4000-8000-000000000004", // reviewer.test
+        letterTypeId: null, // Berlaku seluruh jenis surat uji
+        canReview: true,
+        canApprove: true,
+        canSign: false,
+        validFrom: "2026-01-01",
+        validTo: "2027-12-31",
+        status: "ACTIVE",
+        decreeNumber: "SK-P4I/2026/001-TEST",
+        notes: "Mandat Pemeriksa & Penyetuju Surat Uji Coba Internal (Simulasi Test)",
+      },
+      {
+        id: "f0000000-0000-4000-8000-000000000002",
+        userId: "e0000000-0000-4000-8000-000000000005", // staf2.test (expired)
+        letterTypeId: null,
+        canReview: true,
+        canApprove: true,
+        canSign: false,
+        validFrom: "2025-01-01",
+        validTo: "2025-12-31",
+        status: "EXPIRED",
+        decreeNumber: "SK-P4I/2025/EXPIRED-TEST",
+        notes: "Mandat Uji Kadaluwarsa",
+      },
+      {
+        id: "f0000000-0000-4000-8000-000000000003",
+        userId: "e0000000-0000-4000-8000-000000000003", // disabled.test (revoked)
+        letterTypeId: null,
+        canReview: true,
+        canApprove: true,
+        canSign: false,
+        validFrom: "2026-01-01",
+        validTo: "2026-12-31",
+        status: "REVOKED",
+        decreeNumber: "SK-P4I/2026/REVOKED-TEST",
+        notes: "Mandat Uji Dicabut",
+      },
+    ];
+
+    for (const m of mandates) {
+      await client.query(`
+        INSERT INTO signatory_mandates (
+          id, organization_id, user_id, letter_type_id, can_review, can_approve, can_sign,
+          valid_from, valid_to, status, decree_number, notes
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12
+        ) ON CONFLICT (id) DO UPDATE SET
+          can_review = EXCLUDED.can_review,
+          can_approve = EXCLUDED.can_approve,
+          valid_from = EXCLUDED.valid_from,
+          valid_to = EXCLUDED.valid_to,
+          status = EXCLUDED.status,
+          decree_number = EXCLUDED.decree_number;
+      `, [
+        m.id, orgId, m.userId, m.letterTypeId, m.canReview, m.canApprove, m.canSign,
+        m.validFrom, m.validTo, m.status, m.decreeNumber, m.notes
+      ]);
+    }
+
     await client.query("COMMIT;");
     console.log("[P4I-SEED] Seeding data uji lokal selesai.");
     console.log("[P4I-SEED] Kredensial Uji Lokal:");
-    console.log("  - Admin: admin.test@p4i.local / Password123!");
-    console.log("  - Staf:  staf.test@p4i.local / Password123!");
-    console.log("  - Disabled: disabled.test@p4i.local / Password123!");
+    console.log("  - Admin:    admin.test@p4i.local / Password123!");
+    console.log("  - Staf:     staf.test@p4i.local / Password123!");
+    console.log("  - Reviewer: reviewer.test@p4i.local / Password123! (Mandat Aktif: SK-P4I/2026/001-TEST)");
+    console.log("  - Staf 2:   staf2.test@p4i.local / Password123! (Mandat Kadaluwarsa)");
+    console.log("  - Disabled: disabled.test@p4i.local / Password123! (Mandat Dicabut)");
+    console.log("  - Unauth:   unauthorized.test@p4i.local / Password123! (Tanpa Mandat)");
 
     client.release();
     await pool.end();

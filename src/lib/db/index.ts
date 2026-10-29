@@ -12,7 +12,14 @@ import {
   CreateDraftInput, 
   AddRevisionInput, 
   DatabaseHealthStatus,
-  DatabaseUnavailableError 
+  DatabaseUnavailableError,
+  SignatoryMandateRecord,
+  ApprovalRequestRecord,
+  ApprovalStepRecord,
+  LetterStatusHistoryRecord,
+  ApprovalDecisionInput,
+  CreateMandateInput,
+  UpdateMandateInput
 } from "./types";
 
 export * from "./types";
@@ -183,10 +190,103 @@ class AdaptiveDatabaseRouter implements IDatabaseStore {
     return store.submitForReview(letterId, author);
   }
 
+  async submitForApproval(
+    letterId: string,
+    submitter: UserContext,
+    notes?: string
+  ): Promise<{ letter: LetterRecord; request: ApprovalRequestRecord }> {
+    const store = await this.getActiveStore();
+    return store.submitForApproval(letterId, submitter, notes);
+  }
+
+  async getPendingApprovals(
+    reviewer: UserContext,
+    orgId: string
+  ): Promise<ApprovalRequestRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getPendingApprovals(reviewer, orgId);
+  }
+
+  async getApprovalRequestById(
+    requestId: string,
+    userContext?: UserContext
+  ): Promise<{
+    request: ApprovalRequestRecord;
+    letter: LetterRecord;
+    revision: LetterRevisionRecord;
+    steps: ApprovalStepRecord[];
+  } | null> {
+    const store = await this.getActiveStore();
+    return store.getApprovalRequestById(requestId, userContext);
+  }
+
+  async getApprovalRequestByLetterId(
+    letterId: string,
+    userContext?: UserContext
+  ): Promise<ApprovalRequestRecord | null> {
+    const store = await this.getActiveStore();
+    return store.getApprovalRequestByLetterId(letterId, userContext);
+  }
+
+  async decideApproval(
+    requestId: string,
+    reviewer: UserContext,
+    input: ApprovalDecisionInput
+  ): Promise<{
+    letter: LetterRecord;
+    request: ApprovalRequestRecord;
+    step: ApprovalStepRecord;
+  }> {
+    const store = await this.getActiveStore();
+    return store.decideApproval(requestId, reviewer, input);
+  }
+
+  async getLetterHistory(
+    letterId: string,
+    orgId: string,
+    userContext?: UserContext
+  ): Promise<LetterStatusHistoryRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getLetterHistory(letterId, orgId, userContext);
+  }
+
+  async getSignatoryMandates(
+    orgId: string,
+    userId?: string
+  ): Promise<SignatoryMandateRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getSignatoryMandates(orgId, userId);
+  }
+
+  async getMandateById(
+    mandateId: string,
+    orgId: string
+  ): Promise<SignatoryMandateRecord | null> {
+    const store = await this.getActiveStore();
+    return store.getMandateById(mandateId, orgId);
+  }
+
+  async createSignatoryMandate(
+    data: CreateMandateInput,
+    actor: UserContext
+  ): Promise<SignatoryMandateRecord> {
+    const store = await this.getActiveStore();
+    return store.createSignatoryMandate(data, actor);
+  }
+
+  async updateSignatoryMandate(
+    mandateId: string,
+    data: UpdateMandateInput,
+    actor: UserContext
+  ): Promise<SignatoryMandateRecord | null> {
+    const store = await this.getActiveStore();
+    return store.updateSignatoryMandate(mandateId, data, actor);
+  }
+
   allocateOfficialNumber(): never {
     throw new Error(
-      "BLOCKED: Penomoran surat resmi terkunci pada Sprint 1C! " +
-      "Syarat pembukaan: verifikasi register arsip lama (D-01), SOP reset nomor (D-02), dan mandat pejabat (D-04) disahkan oleh Pengurus Yayasan."
+      "BLOCKED: Penomoran surat resmi terkunci pada Sprint 1B, 1C & Sprint 2 (dinonaktifkan)! " +
+      "Sesuai mandat tata kelola, fitur penomoran resmi hanya akan dibuka pada Sprint berikutnya setelah seluruh alur verifikasi pengurus dan register arsip disahkan secara resmi."
     );
   }
 }

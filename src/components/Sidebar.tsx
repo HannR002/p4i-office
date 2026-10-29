@@ -10,7 +10,9 @@ import {
   FileSpreadsheet, 
   Users, 
   Settings,
-  ShieldAlert
+  ShieldAlert,
+  CheckCircle2,
+  Award
 } from "lucide-react";
 
 interface SidebarProps {
@@ -24,6 +26,8 @@ export function Sidebar({ userRole }: SidebarProps) {
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/letters", label: "Surat Keluar (Draf)", icon: Mail },
     { href: "/letters/new", label: "Buat Draf Baru", icon: FilePlus2 },
+    { href: "/approvals", label: "Antrean Pemeriksaan", icon: CheckCircle2 },
+    { href: "/mandates", label: "Mandat Pejabat", icon: Award },
     { href: "/templates", label: "Katalog Templat", icon: FileSpreadsheet },
     { href: "/users", label: "Pengguna & Peran", icon: Users, adminOnly: true },
     { href: "/settings", label: "Pengaturan & Kebijakan", icon: Settings },
@@ -69,10 +73,10 @@ export function Sidebar({ userRole }: SidebarProps) {
       <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1.5">
         <div className="flex items-center gap-1.5 font-bold text-amber-950">
           <ShieldAlert className="w-3.5 h-3.5 text-amber-700" />
-          <span>Status Lingkungan</span>
+          <span>Sprint 2: Alur Persetujuan</span>
         </div>
         <p className="text-[11px] leading-relaxed text-amber-800">
-          Penomoran resmi di-lock mati. Rekonsiliasi nomor historis (D-01) dan matriks mandat penandatangan (D-04) belum disahkan.
+          Persetujuan draf aktif mengikat hash & mandat. Penomoran resmi dan penandatanganan final tetap OFF demi integritas tata kelola.
         </p>
       </div>
     </aside>

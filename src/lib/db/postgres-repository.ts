@@ -10,7 +10,14 @@ import {
   UserContext, 
   CreateDraftInput, 
   AddRevisionInput, 
-  DatabaseHealthStatus 
+  DatabaseHealthStatus,
+  SignatoryMandateRecord,
+  ApprovalRequestRecord,
+  ApprovalStepRecord,
+  LetterStatusHistoryRecord,
+  ApprovalDecisionInput,
+  CreateMandateInput,
+  UpdateMandateInput
 } from "./types";
 import { calculateContentHash } from "@/lib/security/hash";
 

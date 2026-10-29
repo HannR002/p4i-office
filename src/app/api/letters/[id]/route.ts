@@ -34,12 +34,16 @@ export async function GET(
 
     const revisions = await db.getLetterRevisions(id);
     const organization = await db.getOrganization();
+    const history = await db.getLetterHistory(id, user.organizationId, user);
+    const approvalRequest = await db.getApprovalRequestByLetterId(id, user);
 
     return NextResponse.json({
       success: true,
       letter,
       revisions,
       organization,
+      history,
+      approvalRequest,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Gagal memuat draf surat.";

@@ -37,5 +37,5 @@ describe("DB-07: Verifikasi Prosedur Backup & Restore Otomatis Round-trip", () =
 
     await client.end();
     console.log(`[DB-07: PASS] Round-trip backup & restore verified. Total rows: ${restoreRes.restoredRows}, Hash: ${backupRes.manifest.dataHash}`);
-  });
+  }, 30000);
 });

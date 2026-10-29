@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/security/session";
 import { db } from "@/lib/db";
+import { sanitizeString } from "@/lib/security/sanitization";
 
 export async function POST(
   req: NextRequest,
@@ -14,17 +15,26 @@ export async function POST(
   const { id } = await context.params;
 
   try {
-    const updatedLetter = await db.submitForReview(id, {
-      id: user.id,
-      name: user.displayName,
-      role: user.role,
-      organizationId: user.organizationId,
-    });
+    const body = await req.json().catch(() => ({}));
+    const notes = body.notes ? sanitizeString(body.notes) : undefined;
+
+    const result = await db.submitForApproval(
+      id,
+      {
+        id: user.id,
+        name: user.displayName,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+      notes
+    );
 
     return NextResponse.json({
       success: true,
-      message: "Draf berhasil diajukan untuk pemeriksaan (Status: IN_REVIEW).",
-      letter: updatedLetter,
+      message: "Draf berhasil diajukan untuk pemeriksaan (Status: SUBMITTED).",
+      letter: result.letter,
+      request: result.request,
+      data: result,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Gagal mengajukan draf.";

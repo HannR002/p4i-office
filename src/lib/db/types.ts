@@ -6,7 +6,7 @@ export interface UserRecord {
   displayName: string;
   passwordHash: string;
   status: "ACTIVE" | "DISABLED" | "INVITED";
-  role: "SYSTEM_ADMIN" | "STAFF";
+  role: "SYSTEM_ADMIN" | "STAFF" | "REVIEWER";
   createdAt: string;
 }
 
@@ -45,6 +45,22 @@ export interface LetterRevisionRecord {
   createdAt: string;
 }
 
+export type LetterStatus = 
+  | "DRAFT" 
+  | "SUBMITTED" 
+  | "IN_REVIEW" 
+  | "CHANGES_REQUESTED" 
+  | "RETURNED" 
+  | "REJECTED" 
+  | "REVIEWED" 
+  | "APPROVED" 
+  | "NUMBERED" 
+  | "AWAITING_SIGNATURE" 
+  | "SIGNED" 
+  | "ISSUED" 
+  | "ARCHIVED" 
+  | "VOIDED";
+
 export interface LetterRecord {
   id: string;
   organizationId: string;
@@ -58,9 +74,9 @@ export interface LetterRecord {
   recipientName: string;
   classification: "PUBLIC" | "INTERNAL" | "CONFIDENTIAL";
   plannedDate: string;
-  status: "DRAFT" | "IN_REVIEW" | "RETURNED" | "REVIEWED" | "APPROVED" | "NUMBERED" | "VOIDED";
+  status: LetterStatus;
   currentRevisionNo: number;
-  officialNumber: null; // Strictly null in Sprint 1B
+  officialNumber: null; // Strictly null in Sprint 1B, 1C & Sprint 2
   createdAt: string;
   updatedAt: string;
 }
@@ -70,7 +86,7 @@ export interface UserContext {
   name?: string;
   displayName?: string;
   email?: string;
-  role: "SYSTEM_ADMIN" | "STAFF";
+  role: "SYSTEM_ADMIN" | "STAFF" | "REVIEWER";
   organizationId: string;
 }
 
@@ -91,6 +107,108 @@ export interface AddRevisionInput {
   content: Record<string, unknown>;
   changeSummary?: string;
   expectedVersion?: number;
+}
+
+export interface SignatoryMandateRecord {
+  id: string;
+  organizationId: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  letterTypeId: string | null;
+  letterTypeCode?: string | null;
+  letterTypeLabel?: string | null;
+  unitId: string | null;
+  unitName?: string | null;
+  canReview: boolean;
+  canApprove: boolean;
+  canSign: boolean;
+  validFrom: string; // YYYY-MM-DD
+  validTo: string;   // YYYY-MM-DD
+  status: "ACTIVE" | "REVOKED" | "EXPIRED";
+  decreeNumber: string;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovalRequestRecord {
+  id: string;
+  organizationId: string;
+  letterId: string;
+  letterSubject?: string;
+  letterTypeCode?: string;
+  letterTypeLabel?: string;
+  revisionId: string;
+  revisionVersion: number;
+  contentSha256: string;
+  submittedBy: string;
+  submittedByName?: string;
+  submittedAt: string;
+  status: "PENDING" | "IN_REVIEW" | "APPROVED" | "CHANGES_REQUESTED" | "REJECTED" | "SUPERSEDED";
+  submissionNotes?: string | null;
+  workflowVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovalStepRecord {
+  id: string;
+  approvalRequestId: string;
+  letterId: string;
+  revisionId: string;
+  stepNo: number;
+  reviewerId: string;
+  reviewerName?: string;
+  mandateId: string;
+  mandateDecreeNumber?: string;
+  decision: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED";
+  decisionContentSha256: string;
+  comments?: string | null;
+  decidedAt: string;
+}
+
+export interface LetterStatusHistoryRecord {
+  id: string;
+  letterId: string;
+  revisionId?: string | null;
+  fromStatus: string;
+  toStatus: string;
+  actorId: string;
+  actorName?: string;
+  reason?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ApprovalDecisionInput {
+  decision: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED";
+  comments?: string;
+  mandateId?: string;
+}
+
+export interface CreateMandateInput {
+  userId: string;
+  letterTypeId?: string | null;
+  unitId?: string | null;
+  canReview?: boolean;
+  canApprove: boolean;
+  canSign?: boolean;
+  validFrom: string;
+  validTo: string;
+  decreeNumber: string;
+  notes?: string;
+}
+
+export interface UpdateMandateInput {
+  canReview?: boolean;
+  canApprove?: boolean;
+  canSign?: boolean;
+  validFrom?: string;
+  validTo?: string;
+  status?: "ACTIVE" | "REVOKED" | "EXPIRED";
+  decreeNumber?: string;
+  notes?: string;
 }
 
 export interface DatabaseHealthStatus {
@@ -139,6 +257,70 @@ export interface IDatabaseStore {
     letterId: string,
     author: UserContext
   ): Promise<LetterRecord>;
+
+  // Sprint 2 Alur Persetujuan & Mandat
+  submitForApproval(
+    letterId: string,
+    submitter: UserContext,
+    notes?: string
+  ): Promise<{ letter: LetterRecord; request: ApprovalRequestRecord }>;
+
+  getPendingApprovals(
+    reviewer: UserContext,
+    orgId: string
+  ): Promise<ApprovalRequestRecord[]>;
+
+  getApprovalRequestById(
+    requestId: string,
+    userContext?: UserContext
+  ): Promise<{
+    request: ApprovalRequestRecord;
+    letter: LetterRecord;
+    revision: LetterRevisionRecord;
+    steps: ApprovalStepRecord[];
+  } | null>;
+
+  getApprovalRequestByLetterId(
+    letterId: string,
+    userContext?: UserContext
+  ): Promise<ApprovalRequestRecord | null>;
+
+  decideApproval(
+    requestId: string,
+    reviewer: UserContext,
+    input: ApprovalDecisionInput
+  ): Promise<{
+    letter: LetterRecord;
+    request: ApprovalRequestRecord;
+    step: ApprovalStepRecord;
+  }>;
+
+  getLetterHistory(
+    letterId: string,
+    orgId: string,
+    userContext?: UserContext
+  ): Promise<LetterStatusHistoryRecord[]>;
+
+  getSignatoryMandates(
+    orgId: string,
+    userId?: string
+  ): Promise<SignatoryMandateRecord[]>;
+
+  getMandateById(
+    mandateId: string,
+    orgId: string
+  ): Promise<SignatoryMandateRecord | null>;
+
+  createSignatoryMandate(
+    data: CreateMandateInput,
+    actor: UserContext
+  ): Promise<SignatoryMandateRecord>;
+
+  updateSignatoryMandate(
+    mandateId: string,
+    data: UpdateMandateInput,
+    actor: UserContext
+  ): Promise<SignatoryMandateRecord | null>;
 
   allocateOfficialNumber(): never;
 }

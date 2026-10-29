@@ -17,8 +17,12 @@ const TABLES_IN_ORDER = [
   'user_roles',
   'numbering_policies',
   'letter_types',
+  'signatory_mandates',
   'letters',
   'letter_revisions',
+  'approval_requests',
+  'approval_steps',
+  'letter_status_history',
   'audit_events',
 ];
 

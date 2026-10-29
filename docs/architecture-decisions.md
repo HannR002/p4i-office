@@ -104,9 +104,46 @@ Sprint 1B memperluas arsitektur dengan fokus pada:
 
 ---
 
-### 5. Batasan Produksi yang Masih Terbuka (Production Blockers)
+### 5. Keputusan Arsitektur Lanjutan Sprint 2 (Approval Workflow & Authority Management)
+
+#### 5.1 Model State Machine Alur Persetujuan Surat Internal
+- **Implementasi:** Menerapkan siklus hidup status surat formal pada database dan domain:
+  - Alur Utama: `DRAFT → SUBMITTED → IN_REVIEW → APPROVED`
+  - Percabangan Telaah: `IN_REVIEW → CHANGES_REQUESTED` dan `IN_REVIEW → REJECTED`
+  - Siklus Perbaikan: `CHANGES_REQUESTED → DRAFT → SUBMITTED`
+  - Transisi status dicatat secara otomatis ke tabel audit `letter_status_history` dengan actor, old_status, new_status, dan notes.
+- **Rasional:** Mengakomodasi kebutuhan koreksi naskah tanpa memperbolehkan penyuntingan liar pada surat yang sedang dalam telaah atau telah disetujui.
+
+#### 5.2 Pengikatan Kriptografis Konten Draf (`content_sha256`) & Anti-Stale Approval
+- **Implementasi:** Tabel `approval_requests` dan `approval_steps` menyimpan referensi `letter_id`, `revision_id`, `revision_version`, dan `content_sha256`. Saat reviewer memproses persetujuan, backend memverifikasi kecocokan versi draf aktif dan hash konten. Jika revisi telah berganti, transaksi digagalkan dengan kode error `STALE_REVISION` (HTTP 409 Conflict).
+- **Rasional:** Menjamin kepatuhan integritas naskah di mana reviewer hanya menyetujui teks yang benar-benar diperiksa, mencegah persetujuan draf yang telah diubah secara diam-diam.
+
+#### 5.3 Manajemen Mandat Pejabat Penandatangan (`signatory_mandates`) & Runtime Enforcement
+- **Implementasi:** Membuat tabel `signatory_mandates` yang mencatat nomor SK delegasi kewenangan (`decree_number`), penerima kuasa (`user_id`), rentang waktu berlaku (`valid_from` s.d. `valid_to`), dan status (`ACTIVE`, `EXPIRED`, `REVOKED`). Pada setiap keputusan persetujuan (`APPROVED`), sistem mewajibkan referensi mandat yang sah dan aktif.
+- **Rasional:** Memisahkan peran administratif teknis dari otoritas penandatanganan legal, memastikan setiap persetujuan surat terikat pada dasar hukum mandat yayasan yang terverifikasi.
+
+#### 5.4 Penegakan Segregation of Duties (Anti Self-Approval)
+- **Implementasi:** Backend memeriksa relasi pembuat draf dan reviewer (`letter.author_id === reviewer.id`). Jika pembuat draf mencoba menyetujui surat buatannya sendiri, transaksi ditolak seketika (`SELF_APPROVAL_DISALLOWED`, HTTP 403 Forbidden).
+- **Rasional:** Mencegah konflik kepentingan dan menegakkan prinsip tata kelola organisasi (two-eyes/four-eyes principle).
+
+#### 5.5 Catatan Wajib untuk Penolakan & Permintaan Koreksi
+- **Implementasi:** Pada keputusan `CHANGES_REQUESTED` dan `REJECTED`, backend mewajibkan masukan catatan telaah minimal 5 karakter (`notes.trim().length >= 5`).
+- **Rasional:** Memastikan pembuat draf mendapatkan petunjuk perbaikan yang jelas dan jejak audit penolakan terdokumentasi secara transparan.
+
+#### 5.6 Penguncian Concurrency & Transaksi ACID via `SELECT FOR UPDATE`
+- **Implementasi:** Operasi persetujuan surat mengunci baris `letters` dan `approval_requests` menggunakan `SELECT ... FOR UPDATE` dalam transaksi tertutup database PostgreSQL.
+- **Rasional:** Mencegah keputusan ganda simultan (*double decision*) dari beberapa reviewer konkuren.
+
+#### 5.7 Reafirmasi Penguncian Fitur Penomoran Resmi (Zero Fictional Numbering)
+- **Implementasi:** `FEATURE_NUMBERING_ACTIVE = false` dan kolom `officialNumber = null` tetap dipertahankan 100%. Surat berstatus `APPROVED` di Sprint 2 belum memiliki nomor surat resmi ataupun tanda tangan digital final.
+- **Rasional:** Mematuhi mandat tata kelola proyek bahwa format penomoran resmi dan rekonsiliasi register masa lalu menunggu pengesahan Pengurus Yayasan P4I sebelum dibuka pada Sprint 3.
+
+---
+
+### 6. Batasan Produksi yang Masih Terbuka (Production Blockers)
 1. **Pola Penomoran Resmi Belum Disahkan:** Dokumen D-01 s.d. D-03 pada `P4I_Office_Paket_Sprint0.xlsx` masih memerlukan SK / tanda tangan Pengurus.
 2. **Ketiadaan Rekonsiliasi Register Masa Lalu:** Arsip surat 2024–2026 belum diimpor atau diverifikasi.
-3. **Ketiadaan Mandat Pejabat:** Pejabat penandatangan (Ketua / Sekretaris) belum memiliki SK mandat digital.
-4. **MFA Administrator:** Dukungan MFA untuk peran `SYSTEM_ADMIN` belum diaktifkan (dijadwalkan Sprint 2).
+3. **Mandat Pejabat Legal Definitif:** Pejabat penandatangan (Ketua / Sekretaris) masih menggunakan mandat pengujian. SK mandat digital definitif dari Pengurus Yayasan P4I diperlukan sebelum go-live.
+4. **MFA Administrator:** Dukungan MFA untuk peran `SYSTEM_ADMIN` belum diaktifkan.
 5. **Ketersediaan Layanan PostgreSQL:** **TERSELESAIKAN (RESOLVED) di Sprint 1C** via local PostgreSQL 18.4 native runner. Status koneksi: `CONNECTED`, migrasi idempotent tervalidasi, persistensi terbukti.
+6. **Alur Persetujuan & Mandat Pejabat:** **TERSELESAIKAN (RESOLVED) di Sprint 2** via implementasi state machine, cryptographic hash binding, anti self-approval, dan tabel mandat ber-enforcement database.
