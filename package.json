@@ -1,6 +1,6 @@
 {
   "name": "p4i-office",
-  "version": "1.0.0-sprint1b",
+  "version": "1.0.0-sprint1c",
   "private": true,
   "description": "Sistem Administrasi dan Persuratan Internal — Yayasan P4I",
   "scripts": {
@@ -11,8 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "db:server": "node scripts/local-db-server.mjs",
     "db:migrate": "node --env-file=.env scripts/migrate.mjs",
-    "db:seed:test": "node --env-file=.env scripts/seed-test.mjs"
+    "db:seed:test": "node --env-file=.env scripts/seed-test.mjs",
+    "db:backup": "node --env-file=.env scripts/backup-db.mjs",
+    "db:restore": "node --env-file=.env scripts/restore-db.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -33,6 +36,7 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "autoprefixer": "^10.4.20",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9.20.1",
     "eslint-config-next": "15.1.7",
     "postcss": "^8.5.2",

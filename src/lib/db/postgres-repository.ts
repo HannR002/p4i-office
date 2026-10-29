@@ -21,7 +21,7 @@ export class PostgresDatabaseStore implements IDatabaseStore {
       connected: conn.connected,
       target: getMaskedDatabaseUrl(),
       mode: "REAL_POSTGRES",
-      status: conn.connected ? "CONNECTED" : "BLOCKED",
+      status: conn.connected ? "CONNECTED" : "UNAVAILABLE",
       errorDetail: conn.error,
       latencyMs: conn.latencyMs,
     };
@@ -200,9 +200,10 @@ export class PostgresDatabaseStore implements IDatabaseStore {
 
   async getLetterTypeById(typeIdOrCode: string): Promise<LetterTypeRecord | null> {
     const pool = getPgPool();
-    // Normalisasi kode seperti 'type-magang' -> 'KET-MAGANG' jika ada
+    // Normalisasi kode legacy atau alias jenis surat jika ada
     const codeMap: Record<string, string> = {
-      "type-magang": "KET-MAGANG",
+      "type-magang": "KETERANGAN",
+      "ket-magang": "KETERANGAN",
       "type-tugas": "TUGAS",
       "type-undangan": "UNDANGAN",
       "type-permohonan": "PERMOHONAN",

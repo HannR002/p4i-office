@@ -1,5 +1,8 @@
 import pg from "pg";
 
+// Pastikan tipe data DATE (OID 1082) dikembalikan sebagai string YYYY-MM-DD tanpa distorsi zona waktu
+pg.types.setTypeParser(1082, (val: string) => val);
+
 let pool: pg.Pool | null = null;
 
 export function getDatabaseUrl(): string {

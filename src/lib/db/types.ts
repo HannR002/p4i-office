@@ -96,10 +96,17 @@ export interface AddRevisionInput {
 export interface DatabaseHealthStatus {
   connected: boolean;
   target: string;
-  mode: "REAL_POSTGRES" | "IN_MEMORY_FAILSAFE";
-  status: "CONNECTED" | "BLOCKED" | "ERROR";
+  mode: "REAL_POSTGRES" | "SIMULATION";
+  status: "CONNECTED" | "UNAVAILABLE" | "SIMULATION";
   errorDetail?: string;
   latencyMs?: number;
+}
+
+export class DatabaseUnavailableError extends Error {
+  constructor(message = "Layanan pangkalan data PostgreSQL tidak tersedia (UNAVAILABLE). Operasi dibatalkan demi integritas dan persistensi data.") {
+    super(message);
+    this.name = "DatabaseUnavailableError";
+  }
 }
 
 export interface IDatabaseStore {

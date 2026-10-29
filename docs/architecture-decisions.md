@@ -80,9 +80,33 @@ Sprint 1B memperluas arsitektur dengan fokus pada:
 
 ---
 
-### 4. Batasan Produksi yang Masih Terbuka (Production Blockers)
+### 4. Keputusan Arsitektur Lanjutan Sprint 1C (Real PostgreSQL Integration & Hardening)
+
+#### 4.1 Penyediaan Runtime PostgreSQL Native Portabel
+- **Implementasi:** Mengintegrasikan runtime PostgreSQL 18.4 native x64 via `embedded-postgres` yang berjalan pada user-space lokal (`.data/postgres`) terikat hanya ke `127.0.0.1:5432`.
+- **Rasional:** Menjawab tantangan ketiadaan Docker Desktop dan ketiadaan izin instalasi OS Windows invasif, sekaligus menghadirkan instans PostgreSQL riil yang sesungguhnya untuk development, migrasi, dan pengujian.
+
+#### 4.2 Eliminasi Silent Memory Fallback & Penegakan Strict Database Routing
+- **Implementasi:** `AdaptiveDatabaseRouter` diperketat. Jika PostgreSQL offline, sistem menolak operasi data dan melempar `DatabaseUnavailableError` (health: `UNAVAILABLE`). Tidak ada lagi peralihan diam-diam (*silent fallback*) ke memori. Mode in-memory hanya boleh aktif jika `DB_SIMULATION=true` dan `NODE_ENV=test` secara eksplisit, dan mutlak dilarang di production.
+- **Rasional:** Menjamin kepatuhan persistensi data dan mencegah inkonsistensi transaksi yang hilang di memori tanpa disadari.
+
+#### 4.3 Normalisasi Tipe Data DATE (OID 1082)
+- **Implementasi:** Menambahkan parser tipe data PostgreSQL `pg.types.setTypeParser(1082, (val) => val)` pada koneksi pool dan skrip migrasi/backup/restore.
+- **Rasional:** Mengembalikan tanggal `YYYY-MM-DD` sebagai string murni, menghilangkan pergeseran tanggal (*date shifting*) akibat konversi objek JavaScript Date di zona waktu lokal (GMT+7 vs UTC).
+
+#### 4.4 Prosedur Backup & Restore Berbasis Transaksi ACID & SHA-256 Round-Trip
+- **Implementasi:** Menyediakan skrip `scripts/backup-db.mjs` dan `scripts/restore-db.mjs` dengan urutan topologis relasi database, ekspor data terstruktur, dan validasi restorasi ke database kedua (`p4i_office_restore_test`) dengan verifikasi bit-for-bit hash SHA-256.
+- **Rasional:** Memenuhi kriteria penerimaan DB-07 dengan jaminan matematis bahwa proses pemulihan data tidak merusak relasi foreign key atau integritas konten draf.
+
+#### 4.5 Penegakan Exit Code Non-Zero pada Skrip Otomasi
+- **Implementasi:** Mengubah penanganan error pada `scripts/migrate.mjs` dan `scripts/seed-test.mjs` agar memanggil `process.exit(1)` saat terjadi kegagalan.
+- **Rasional:** Memastikan kegagalan koneksi atau eksekusi SQL tidak ditutupi dengan exit code 0 yang dapat mengecoh pipeline CI/CD.
+
+---
+
+### 5. Batasan Produksi yang Masih Terbuka (Production Blockers)
 1. **Pola Penomoran Resmi Belum Disahkan:** Dokumen D-01 s.d. D-03 pada `P4I_Office_Paket_Sprint0.xlsx` masih memerlukan SK / tanda tangan Pengurus.
 2. **Ketiadaan Rekonsiliasi Register Masa Lalu:** Arsip surat 2024–2026 belum diimpor atau diverifikasi.
 3. **Ketiadaan Mandat Pejabat:** Pejabat penandatangan (Ketua / Sekretaris) belum memiliki SK mandat digital.
 4. **MFA Administrator:** Dukungan MFA untuk peran `SYSTEM_ADMIN` belum diaktifkan (dijadwalkan Sprint 2).
-5. **Ketersediaan Layanan PostgreSQL Host:** Service PostgreSQL lokal pada lingkungan pengembangan saat ini offline dan dilaporkan sebagai **BLOCKED** secara transparan.
+5. **Ketersediaan Layanan PostgreSQL:** **TERSELESAIKAN (RESOLVED) di Sprint 1C** via local PostgreSQL 18.4 native runner. Status koneksi: `CONNECTED`, migrasi idempotent tervalidasi, persistensi terbukti.

@@ -7,7 +7,7 @@ const puppeteer = require("puppeteer-core");
 
 const CHROME_PATH = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const BASE_URL = "http://localhost:3000";
-const OUTPUT_DIR = path.resolve("docs/evidence/sprint-1b/screenshots");
+const OUTPUT_DIR = path.resolve("docs/evidence/sprint-1c/screenshots");
 const LEGACY_DIR = path.resolve("docs/evidence/screenshots");
 
 async function sleep(ms) {
@@ -130,7 +130,13 @@ async function main() {
     await sleep(500);
     await saveScreenshot("11_users_management_admin.png");
 
-    console.log("\n[EVIDENCE] SUKSES! Seluruh 11 tangkapan layar berhasil disimpan ke:", OUTPUT_DIR);
+    // 12. Healthcheck & Database Connected Status
+    console.log("12. Mengambil screenshot Healthcheck API & Status Database CONNECTED...");
+    await page.goto(`${BASE_URL}/api/health`, { waitUntil: "networkidle0" });
+    await sleep(300);
+    await saveScreenshot("12_api_health_connected.png");
+
+    console.log("\n[EVIDENCE] SUKSES! Seluruh 12 tangkapan layar berhasil disimpan ke:", OUTPUT_DIR);
   } catch (err) {
     console.error("[EVIDENCE] Terjadi kesalahan:", err);
   } finally {

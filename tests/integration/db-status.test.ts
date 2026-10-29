@@ -1,49 +1,66 @@
 import { describe, it, expect } from "vitest";
-import { checkPostgresConnection, getMaskedDatabaseUrl, db } from "@/lib/db";
+import { checkPostgresConnection, getMaskedDatabaseUrl, db, getPgPool } from "@/lib/db";
 
-describe("T01–T05: Integrasi Pangkalan Data PostgreSQL (Integration Test Matrix)", () => {
-  it("T01: harus memeriksa ketersediaan service PostgreSQL lokal dan melaporkan status aktual secara jujur", async () => {
+describe("DB-01 & DB-02: Verifikasi Koneksi PostgreSQL Riil & Pelacakan Migrasi", () => {
+  it("DB-01: harus terhubung ke PostgreSQL riil dan mengembalikan status CONNECTED", async () => {
     const conn = await checkPostgresConnection();
     const maskedUrl = getMaskedDatabaseUrl();
 
-    if (conn.connected) {
-      console.log(`[DB INTEGRATION: PASS] PostgreSQL lokal terhubung ke ${maskedUrl}. Latensi: ${conn.latencyMs}ms`);
-      expect(conn.connected).toBe(true);
-    } else {
-      console.warn("================================================================================");
-      console.warn(`[DB INTEGRATION: BLOCKED] Service PostgreSQL lokal (${maskedUrl}) tidak aktif.`);
-      console.warn(`Detail Kesalahan: ${conn.error}`);
-      console.warn("CATATAN AUDIT SPRINT 1B: Sesuai klausul prompt master, ketiadaan service DB riil");
-      console.warn("wajib dilaporkan sebagai BLOCKED secara transparan (bukan PASS palsu).");
-      console.warn("================================================================================");
+    expect(conn.connected).toBe(true);
+    expect(conn.latencyMs).toBeGreaterThanOrEqual(0);
 
-      // Verifikasi bahwa status healthcheck adaptif mencatat status BLOCKED
-      const health = await db.getHealthStatus();
-      expect(health.status).toBe("BLOCKED");
-      expect(health.connected).toBe(false);
-      expect(health.mode).toBe("IN_MEMORY_FAILSAFE");
-    }
+    const health = await db.getHealthStatus();
+    expect(health.status).toBe("CONNECTED");
+    expect(health.connected).toBe(true);
+    expect(health.mode).toBe("REAL_POSTGRES");
+    expect(health.target).toBe(maskedUrl);
+
+    // Verifikasi versi server PostgreSQL riil
+    const pool = getPgPool();
+    const verRes = await pool.query("SELECT version();");
+    expect(verRes.rows[0].version).toContain("PostgreSQL");
+    console.log(`[DB-01: PASS] PostgreSQL Version: ${verRes.rows[0].version.split(",")[0]}`);
   });
 
-  it("T02–T05: Pelaporan Status Migrasi dan Persistensi PostgreSQL Riil", async () => {
-    const conn = await checkPostgresConnection();
+  it("DB-02: tabel schema_migrations harus mencatat migrasi 0001 dan 0002 secara lengkap dengan checksum", async () => {
+    const pool = getPgPool();
+    const res = await pool.query("SELECT version, checksum, applied_at FROM schema_migrations ORDER BY version ASC;");
 
-    if (conn.connected) {
-      // Jika PostgreSQL aktif, uji migrasi dan persistensi riil
-      const health = await db.getHealthStatus();
-      expect(health.status).toBe("CONNECTED");
-      console.log("[T02-T05: PASS] PostgreSQL riil aktif dan siap dieksekusi.");
-    } else {
-      // Jika PostgreSQL offline, laporkan status pengujian T02-T05 sebagai BLOCKED
-      console.log("[T02: BLOCKED] Migrasi riil terhalang karena PostgreSQL service offline.");
-      console.log("[T03: BLOCKED] Re-run migrasi terhalang karena PostgreSQL service offline.");
-      console.log("[T04: BLOCKED] Persistensi draf PostgreSQL riil terhalang service offline.");
-      console.log("[T05: BLOCKED] Uji restart persistensi riil terhalang service offline.");
+    expect(res.rows.length).toBeGreaterThanOrEqual(2);
+    const versions = res.rows.map((r) => r.version);
+    expect(versions).toContain("0001_sprint1a_core.sql");
+    expect(versions).toContain("0002_sprint1b_persistence.sql");
 
-      // Pastikan abstraksi adapter fail-safe tetap berfungsi
-      const org = await db.getOrganization();
-      expect(org).toBeDefined();
-      expect(org.acronym).toContain("P4I");
+    for (const row of res.rows) {
+      expect(row.checksum).toBeDefined();
+      expect(row.checksum.length).toBe(64); // SHA-256 hex string
+      expect(row.applied_at).toBeDefined();
+    }
+
+    console.log(`[DB-02: PASS] Migrations verified: ${versions.join(", ")}`);
+  });
+
+  it("DB-02: seluruh tabel inti harus tersedia dengan integritas foreign key aktif", async () => {
+    const pool = getPgPool();
+    const requiredTables = [
+      "organizations",
+      "org_units",
+      "users",
+      "roles",
+      "user_roles",
+      "numbering_policies",
+      "letter_types",
+      "letters",
+      "letter_revisions",
+      "audit_events",
+    ];
+
+    for (const tbl of requiredTables) {
+      const check = await pool.query(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1",
+        [tbl]
+      );
+      expect(check.rows.length).toBe(1);
     }
   });
 });

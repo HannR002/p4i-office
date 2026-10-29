@@ -117,10 +117,11 @@ async function runSeedTest() {
     await pool.end();
   } catch (err) {
     console.warn("================================================================================");
-    console.warn("[P4I-SEED: BLOCKED] PostgreSQL lokal belum aktif / koneksi gagal.");
+    console.warn("[P4I-SEED: FAILED] PostgreSQL lokal belum aktif / koneksi gagal.");
     console.warn(`Detail Error: ${err.message}`);
     console.warn("================================================================================");
     await pool.end().catch(() => {});
+    process.exit(1);
   }
 }
 

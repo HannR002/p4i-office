@@ -5,9 +5,9 @@ export async function GET() {
   const dbHealth = await db.getHealthStatus();
 
   return NextResponse.json({
-    status: dbHealth.connected ? "healthy" : "degraded",
+    status: dbHealth.connected ? "healthy" : (dbHealth.status === "SIMULATION" ? "simulation" : "degraded"),
     app: "P4I Office",
-    version: "1.0.0-sprint1b",
+    version: "1.0.0-sprint1c",
     environment: process.env.NODE_ENV || "development",
     timestamp: new Date().toISOString(),
     safetyGuards: {

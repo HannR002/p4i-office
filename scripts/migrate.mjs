@@ -75,12 +75,11 @@ async function runMigrations() {
     process.exit(0);
   } catch (err) {
     console.warn("================================================================================");
-    console.warn("[P4I-MIGRATE: BLOCKED] PostgreSQL lokal belum aktif / koneksi gagal.");
+    console.warn("[P4I-MIGRATE: FAILED] PostgreSQL lokal belum aktif / koneksi gagal.");
     console.warn(`Detail Error: ${err.message}`);
-    console.warn("Skrip migrasi siap dieksekusi secara otomatis segera setelah service PostgreSQL lokal dinyalakan.");
     console.warn("================================================================================");
     await pool.end().catch(() => {});
-    process.exit(0);
+    process.exit(1);
   }
 }
 

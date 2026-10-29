@@ -40,3 +40,9 @@ _srs_extracted.txt
 _kickoff_extracted.txt
 _sprint0_extracted.txt
 
+# Local Database & Backups
+.data/
+*.dump
+backups/
+
+

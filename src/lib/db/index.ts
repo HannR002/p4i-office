@@ -1,6 +1,6 @@
 import { PostgresDatabaseStore } from "./postgres-repository";
 import { MemoryDatabaseStore } from "./memory-repository";
-import { checkPostgresConnection } from "./pool";
+import { checkPostgresConnection, getMaskedDatabaseUrl } from "./pool";
 import { 
   IDatabaseStore, 
   UserRecord, 
@@ -11,11 +11,12 @@ import {
   UserContext, 
   CreateDraftInput, 
   AddRevisionInput, 
-  DatabaseHealthStatus 
+  DatabaseHealthStatus,
+  DatabaseUnavailableError 
 } from "./types";
 
 export * from "./types";
-export { getDatabaseUrl, getMaskedDatabaseUrl, checkPostgresConnection } from "./pool";
+export { getDatabaseUrl, getMaskedDatabaseUrl, checkPostgresConnection, getPgPool } from "./pool";
 
 class AdaptiveDatabaseRouter implements IDatabaseStore {
   private pgStore: PostgresDatabaseStore;
@@ -23,14 +24,27 @@ class AdaptiveDatabaseRouter implements IDatabaseStore {
   private connectionChecked = false;
   private isPostgresAvailable = false;
   private lastCheckTime = 0;
-  private checkIntervalMs = 15000; // Cek ulang setiap 15 detik
+  private checkIntervalMs = 5000; // Cek ulang setiap 5 detik
 
   constructor() {
     this.pgStore = new PostgresDatabaseStore();
     this.memStore = new MemoryDatabaseStore();
   }
 
+  private isSimulationMode(): boolean {
+    // Mode simulasi in-memory HANYA boleh aktif pada mode testing eksplisit
+    // Mutlak DILARANG pada production
+    if (process.env.NODE_ENV === "production") {
+      return false;
+    }
+    return process.env.DB_SIMULATION === "true" && process.env.NODE_ENV === "test";
+  }
+
   private async getActiveStore(): Promise<IDatabaseStore> {
+    if (this.isSimulationMode()) {
+      return this.memStore;
+    }
+
     const now = Date.now();
     if (!this.connectionChecked || now - this.lastCheckTime > this.checkIntervalMs) {
       this.lastCheckTime = now;
@@ -42,16 +56,27 @@ class AdaptiveDatabaseRouter implements IDatabaseStore {
         console.log("[P4I-DB] Mode Aktif: REAL_POSTGRES (Terhubung ke PostgreSQL riil).");
       } else {
         console.warn(
-          `[P4I-DB: NOTICE] Layanan PostgreSQL lokal offline (${conn.error || "ECONNREFUSED"}). ` +
-          "Adapter in-memory fail-safe aktif untuk menjaga ketersediaan sistem lokal."
+          `[P4I-DB: ERROR] Layanan PostgreSQL offline (${conn.error || "ECONNREFUSED"}). ` +
+          "Operasi pangkalan data ditolak (UNAVAILABLE). Silent memory fallback dinonaktifkan demi integritas data."
         );
       }
     }
 
-    return this.isPostgresAvailable ? this.pgStore : this.memStore;
+    if (!this.isPostgresAvailable) {
+      throw new DatabaseUnavailableError(
+        "Layanan pangkalan data PostgreSQL tidak tersedia (UNAVAILABLE). " +
+        "Operasi data ditolak untuk mencegah inkonsistensi. Pastikan service PostgreSQL aktif."
+      );
+    }
+
+    return this.pgStore;
   }
 
   async getHealthStatus(): Promise<DatabaseHealthStatus> {
+    if (this.isSimulationMode()) {
+      return await this.memStore.getHealthStatus();
+    }
+
     const conn = await checkPostgresConnection();
     this.isPostgresAvailable = conn.connected;
     this.connectionChecked = true;
@@ -60,10 +85,12 @@ class AdaptiveDatabaseRouter implements IDatabaseStore {
     if (conn.connected) {
       return await this.pgStore.getHealthStatus();
     } else {
-      const memHealth = await this.memStore.getHealthStatus();
       return {
-        ...memHealth,
-        errorDetail: conn.error,
+        connected: false,
+        target: getMaskedDatabaseUrl(),
+        mode: "REAL_POSTGRES",
+        status: "UNAVAILABLE",
+        errorDetail: conn.error || "Connection refused",
         latencyMs: conn.latencyMs,
       };
     }
@@ -158,7 +185,7 @@ class AdaptiveDatabaseRouter implements IDatabaseStore {
 
   allocateOfficialNumber(): never {
     throw new Error(
-      "BLOCKED: Penomoran surat resmi terkunci pada Sprint 1B! " +
+      "BLOCKED: Penomoran surat resmi terkunci pada Sprint 1C! " +
       "Syarat pembukaan: verifikasi register arsip lama (D-01), SOP reset nomor (D-02), dan mandat pejabat (D-04) disahkan oleh Pengurus Yayasan."
     );
   }

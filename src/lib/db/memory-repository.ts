@@ -150,10 +150,10 @@ export class MemoryDatabaseStore implements IDatabaseStore {
   async getHealthStatus(): Promise<DatabaseHealthStatus> {
     return {
       connected: false,
-      target: "In-Memory Secure Store (Sprint 1B Fail-Safe Adapter)",
-      mode: "IN_MEMORY_FAILSAFE",
-      status: "BLOCKED",
-      errorDetail: "Layanan PostgreSQL lokal offline. Adapter cadangan in-memory aktif.",
+      target: "In-Memory Simulation Store",
+      mode: "SIMULATION",
+      status: "SIMULATION",
+      errorDetail: "Mode simulasi aktif secara eksplisit untuk testing terisolasi.",
       latencyMs: 0,
     };
   }
