@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = db.getUserByEmail(email);
+    const user = await db.getUserByEmail(email);
     if (!user) {
       recordLoginAttempt(rateLimitKey);
       return NextResponse.json(

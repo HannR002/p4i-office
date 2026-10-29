@@ -21,11 +21,15 @@ async function runSmokeTests() {
     const healthData = await healthRes.json();
     assert(
       "Endpoint Healthcheck aktif dan mengembalikan data",
-      healthRes.status === 200 && healthData.status === "healthy"
+      healthRes.status === 200 && (healthData.status === "healthy" || healthData.status === "degraded")
     );
     assert(
       "Safety guard: featureNumberingActive bernilai FALSE",
       healthData.safetyGuards?.featureNumberingActive === false
+    );
+    assert(
+      "Healthcheck memuat status database aktual",
+      healthData.database && typeof healthData.database.status === "string"
     );
 
     // 2. Login Akun Nonaktif (DISABLED) -> Harus DITOLAK (403)
@@ -91,7 +95,28 @@ async function runSmokeTests() {
       createData.revision?.version === 1
     );
 
-    // 6. Staf menambah revisi ke-2 (v2) -> tidak menimpa v1
+    // 6. Validasi Input: Penolakan input tidak valid (400)
+    const invalidInputRes = await fetch(`${baseUrl}/api/letters`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookieHeader,
+      },
+      body: JSON.stringify({
+        letterTypeId: "type-magang",
+        subject: "A", // Kurang dari 3 karakter
+        recipientName: "Sdr. Rian Pratama",
+        classification: "INTERNAL",
+        plannedDate: "2026-10-28",
+        content: {},
+      }),
+    });
+    assert(
+      "Input tidak valid (perihal < 3 karakter) ditolak backend dengan status 400",
+      invalidInputRes.status === 400
+    );
+
+    // 7. Staf menambah revisi ke-2 (v2) -> tidak menimpa v1
     const addRevRes = await fetch(`${baseUrl}/api/letters/${createdLetterId}`, {
       method: "POST",
       headers: {
@@ -115,7 +140,7 @@ async function runSmokeTests() {
       revData.revision?.contentSha256?.length === 64
     );
 
-    // 7. Verifikasi riwayat revisi (kedua versi ada dan utuh)
+    // 8. Verifikasi riwayat revisi (kedua versi ada dan utuh)
     const detailRes = await fetch(`${baseUrl}/api/letters/${createdLetterId}`, {
       headers: { Cookie: cookieHeader },
     });
@@ -128,7 +153,7 @@ async function runSmokeTests() {
       detailData.revisions[1].version === 2
     );
 
-    // 8. Staf mengajukan draf untuk pemeriksaan -> status IN_REVIEW
+    // 9. Staf mengajukan draf untuk pemeriksaan -> status IN_REVIEW
     const submitRes = await fetch(`${baseUrl}/api/letters/${createdLetterId}/submit`, {
       method: "POST",
       headers: { Cookie: cookieHeader },
@@ -139,7 +164,7 @@ async function runSmokeTests() {
       submitRes.status === 200 && submitData.letter?.status === "IN_REVIEW"
     );
 
-    // 9. Login Akun Admin -> Sukses (200)
+    // 10. Login Akun Admin -> Sukses (200)
     const adminLoginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -148,7 +173,7 @@ async function runSmokeTests() {
     const adminCookie = adminLoginRes.headers.get("set-cookie") || "";
     const adminCookieHeader = adminCookie.split(";")[0];
 
-    // 10. Admin dapat mengakses /api/users
+    // 11. Admin dapat mengakses /api/users
     const adminUsersRes = await fetch(`${baseUrl}/api/users`, {
       headers: { Cookie: adminCookieHeader },
     });
@@ -157,6 +182,34 @@ async function runSmokeTests() {
       "Admin dapat mengakses daftar pengguna pada /api/users",
       adminUsersRes.status === 200 && Array.isArray(usersData.users) && usersData.users.length >= 3
     );
+
+    // 12. Admin dapat memperbarui status pengguna via PATCH /api/users
+    const targetUserId = usersData.users.find((u) => u.email === "disabled.test@p4i.local")?.id;
+    if (targetUserId) {
+      const patchRes = await fetch(`${baseUrl}/api/users`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: adminCookieHeader,
+        },
+        body: JSON.stringify({ userId: targetUserId, status: "ACTIVE" }),
+      });
+      const patchData = await patchRes.json();
+      assert(
+        "Admin berhasil mengubah status pengguna (PATCH /api/users)",
+        patchRes.status === 200 && patchData.user?.status === "ACTIVE"
+      );
+
+      // Kembalikan ke DISABLED
+      await fetch(`${baseUrl}/api/users`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: adminCookieHeader,
+        },
+        body: JSON.stringify({ userId: targetUserId, status: "DISABLED" }),
+      });
+    }
 
   } catch (err) {
     console.error("[SMOKE-TEST] Error eksekusi smoke test:", err);

@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/security/session";
 import { db } from "@/lib/db";
 
 const updateUserStatusSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.string().min(1, "User ID wajib diisi."),
   status: z.enum(["ACTIVE", "DISABLED"]),
 });
 
@@ -22,7 +22,8 @@ export async function GET() {
     );
   }
 
-  const users = db.getAllUsers(user.organizationId).map((u) => ({
+  const userList = await db.getAllUsers(user.organizationId);
+  const users = userList.map((u) => ({
     id: u.id,
     email: u.email,
     displayName: u.displayName,
@@ -37,7 +38,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ success: false, message: "Akses ditolak." }, { status: 401 });
+    return NextResponse.json({ success: false, message: "Akses ditolak: Silakan masuk." }, { status: 401 });
   }
 
   // KEAMANAN KETAT RBAC: Hanya SYSTEM_ADMIN
@@ -69,7 +70,7 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const updated = db.updateUserStatus(userId, status, user.id);
+    const updated = await db.updateUserStatus(userId, status, user.id);
     if (!updated) {
       return NextResponse.json({ success: false, message: "Pengguna tidak ditemukan." }, { status: 404 });
     }

@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { db } from "@/lib/db";
 
 export const SESSION_COOKIE_NAME = "p4i_office_session";
 
@@ -66,6 +67,7 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
 
 /**
  * Membaca pengguna sesi dari cookie request Next.js saat ini.
+ * Memverifikasi status terkini di database secara real-time (instant session revocation).
  */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
@@ -73,5 +75,27 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!token) {
     return null;
   }
-  return await verifySessionToken(token);
+
+  const sessionUser = await verifySessionToken(token);
+  if (!sessionUser) {
+    return null;
+  }
+
+  // Verifikasi real-time ke database: jika akun telah dinonaktifkan (DISABLED), batalkan sesi seketika
+  try {
+    const freshUser = await db.getUserById(sessionUser.id);
+    if (!freshUser || freshUser.status !== "ACTIVE") {
+      return null;
+    }
+
+    return {
+      ...sessionUser,
+      displayName: freshUser.displayName,
+      role: freshUser.role,
+      status: freshUser.status,
+    };
+  } catch {
+    // Fail-safe jika query terkendala: tetap gunakan data sesi JWT terverifikasi
+    return sessionUser;
+  }
 }

@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 export async function GET() {
+  const dbHealth = await db.getHealthStatus();
+
   return NextResponse.json({
-    status: "healthy",
+    status: dbHealth.connected ? "healthy" : "degraded",
     app: "P4I Office",
-    version: "1.0.0-sprint1a",
+    version: "1.0.0-sprint1b",
     environment: process.env.NODE_ENV || "development",
     timestamp: new Date().toISOString(),
     safetyGuards: {
@@ -14,8 +17,12 @@ export async function GET() {
       mfaStatus: "GAP_PENDING_IMPLEMENTATION",
     },
     database: {
-      urlConfigured: !!process.env.DATABASE_URL,
-      target: "PostgreSQL 14+ (p4i_office_test)",
+      connected: dbHealth.connected,
+      mode: dbHealth.mode,
+      status: dbHealth.status,
+      target: dbHealth.target,
+      latencyMs: dbHealth.latencyMs,
+      error: dbHealth.errorDetail,
     },
   });
 }

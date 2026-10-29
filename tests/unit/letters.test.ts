@@ -1,15 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, UserContext } from "@/lib/db";
 
 describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => {
-  const author = {
-    id: "usr-staff-01",
+  const author: UserContext = {
+    id: "e0000000-0000-4000-8000-000000000002",
     name: "Staf Administrasi (Uji)",
-    organizationId: "org-p4i-yayasan-001",
+    role: "STAFF",
+    organizationId: "a0000000-0000-4000-8000-000000000001",
   };
 
-  it("staf dapat membuat draf surat baru tanpa nomor resmi", () => {
-    const { letter, revision } = db.createDraft(
+  it("staf dapat membuat draf surat baru tanpa nomor resmi", async () => {
+    const { letter, revision } = await db.createDraft(
       {
         letterTypeId: "type-magang",
         subject: "Surat Keterangan Magang Sdr. Ahmad",
@@ -24,7 +25,7 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
     expect(letter.id).toBeDefined();
     expect(letter.status).toBe("DRAFT");
     expect(letter.currentRevisionNo).toBe(1);
-    // SYARAT KUNCI SPRINT 1A: Tidak ada nomor surat resmi
+    // SYARAT KUNCI SPRINT 1B: Tidak ada nomor surat resmi
     expect(letter.officialNumber).toBeNull();
 
     expect(revision.version).toBe(1);
@@ -32,8 +33,8 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
     expect(revision.changeSummary).toContain("v1");
   });
 
-  it("penyuntingan draf menghasilkan revisi baru (v2) tanpa menimpa revisi lama (v1)", () => {
-    const { letter: initialLetter, revision: rev1 } = db.createDraft(
+  it("penyuntingan draf menghasilkan revisi baru (v2) tanpa menimpa revisi lama (v1)", async () => {
+    const { letter: initialLetter, revision: rev1 } = await db.createDraft(
       {
         letterTypeId: "type-tugas",
         subject: "Surat Tugas Lapangan Tim Survei",
@@ -48,7 +49,7 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
     const hashV1Before = rev1.contentSha256;
 
     // Tambah revisi baru (v2)
-    const { letter: updatedLetter, revision: rev2 } = db.addRevision(
+    const { letter: updatedLetter, revision: rev2 } = await db.addRevision(
       initialLetter.id,
       {
         subject: "Surat Tugas Lapangan Tim Survei (Revisi Lokasi)",
@@ -66,7 +67,7 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
     expect(rev2.contentSha256).not.toBe(hashV1Before);
 
     // Ambil seluruh riwayat revisi
-    const allRevisions = db.getLetterRevisions(initialLetter.id);
+    const allRevisions = await db.getLetterRevisions(initialLetter.id);
     expect(allRevisions).toHaveLength(2);
 
     // BUKTI IMMUTABILITY: Revisi v1 tetap utuh dengan hash aslinya
@@ -76,8 +77,8 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
     expect(v1Stored?.subject).toBe("Surat Tugas Lapangan Tim Survei");
   });
 
-  it("staf dapat mengajukan draf untuk pemeriksaan (status menjadi IN_REVIEW)", () => {
-    const { letter } = db.createDraft(
+  it("staf dapat mengajukan draf untuk pemeriksaan (status menjadi IN_REVIEW)", async () => {
+    const { letter } = await db.createDraft(
       {
         letterTypeId: "type-undangan",
         subject: "Undangan Rapat Koordinasi Program",
@@ -89,11 +90,11 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
       author
     );
 
-    const submitted = db.submitForReview(letter.id, author);
+    const submitted = await db.submitForReview(letter.id, author);
     expect(submitted.status).toBe("IN_REVIEW");
 
     // Ketika status IN_REVIEW, penyuntingan draf harus ditolak (terkunci)
-    expect(() => {
+    await expect(
       db.addRevision(
         letter.id,
         {
@@ -104,13 +105,13 @@ describe("Logika Draf Surat & Immutability Revisi (Letters & Revisions)", () => 
           content: {},
         },
         author
-      );
-    }).toThrowError(/tidak dapat disunting/);
+      )
+    ).rejects.toThrowError(/tidak dapat disunting/);
   });
 
-  it("alokasi nomor surat resmi ditolak dan melempar eksepsi pada Sprint 1A (Safety Gate)", () => {
+  it("alokasi nomor surat resmi ditolak dan melempar eksepsi pada Sprint 1B (Safety Gate)", () => {
     expect(() => {
       db.allocateOfficialNumber();
-    }).toThrowError(/BLOCKED: Penomoran surat resmi terkunci pada Sprint 1A/);
+    }).toThrowError(/BLOCKED: Penomoran surat resmi terkunci/);
   });
 });

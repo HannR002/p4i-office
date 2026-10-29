@@ -11,7 +11,7 @@ export default async function SettingsPage() {
     redirect("/login");
   }
 
-  const org = db.getOrganization();
+  const org = await db.getOrganization();
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

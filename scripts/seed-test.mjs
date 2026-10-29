@@ -13,7 +13,8 @@ async function runSeedTest() {
   }
 
   const databaseUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/p4i_office_test";
-  console.log(`[P4I-SEED] Menghubungkan ke database test: ${databaseUrl.replace(/:[^:@]+@/, ":***@")}`);
+  const maskedUrl = databaseUrl.replace(/:[^:@]+@/, ":***@");
+  console.log(`[P4I-SEED] Menghubungkan ke database test: ${maskedUrl}`);
 
   const pool = new pg.Pool({
     connectionString: databaseUrl,
@@ -35,71 +36,75 @@ async function runSeedTest() {
       ON CONFLICT (role_key) DO UPDATE SET label = EXCLUDED.label;
     `);
 
-    // 2. Organization
-    const orgRes = await client.query(`
-      INSERT INTO organizations (legal_name, acronym, address_placeholder)
-      VALUES ('Yayasan Pusat Pendidikan dan Penelitian Pembangunan Indonesia', 'Yayasan P4I', 'Alamat belum diverifikasi (Sprint 1A)')
-      RETURNING id;
-    `);
-    const orgId = orgRes.rows[0].id;
+    // 2. Organization (UUID Deterministik Uji)
+    const orgId = "a0000000-0000-4000-8000-000000000001";
+    await client.query(`
+      INSERT INTO organizations (id, legal_name, acronym, address_placeholder)
+      VALUES ($1, 'Yayasan Pusat Pendidikan dan Penelitian Pembangunan Indonesia', 'Yayasan P4I', 'Alamat belum diverifikasi (Sprint 1B)')
+      ON CONFLICT (id) DO UPDATE SET legal_name = EXCLUDED.legal_name;
+    `, [orgId]);
 
     // 3. Org Unit
-    const unitRes = await client.query(`
-      INSERT INTO org_units (organization_id, name, active)
-      VALUES ($1, 'Sekretariat Utama', true)
-      ON CONFLICT (organization_id, name) DO UPDATE SET active = EXCLUDED.active
-      RETURNING id;
-    `, [orgId]);
-    const unitId = unitRes.rows[0].id;
+    const unitId = "b0000000-0000-4000-8000-000000000001";
+    await client.query(`
+      INSERT INTO org_units (id, organization_id, name, active)
+      VALUES ($1, $2, 'Sekretariat Utama', true)
+      ON CONFLICT (organization_id, name) DO UPDATE SET active = EXCLUDED.active;
+    `, [unitId, orgId]);
 
-    // 4. Test Users with hashed password
+    // 4. Test Users with hashed password and deterministic UUIDs
     const testPassword = "Password123!";
     const passwordHash = await bcrypt.hash(testPassword, 10);
 
     const users = [
-      { email: "admin.test@p4i.local", name: "Admin Pengujian Sistem", status: "ACTIVE", role: "SYSTEM_ADMIN" },
-      { email: "staf.test@p4i.local", name: "Staf Administrasi Uji", status: "ACTIVE", role: "STAFF" },
-      { email: "disabled.test@p4i.local", name: "Akun Nonaktif Uji", status: "DISABLED", role: "STAFF" },
+      { id: "e0000000-0000-4000-8000-000000000001", email: "admin.test@p4i.local", name: "Admin Pengujian Sistem", status: "ACTIVE", role: "SYSTEM_ADMIN" },
+      { id: "e0000000-0000-4000-8000-000000000002", email: "staf.test@p4i.local", name: "Staf Administrasi Uji", status: "ACTIVE", role: "STAFF" },
+      { id: "e0000000-0000-4000-8000-000000000003", email: "disabled.test@p4i.local", name: "Akun Nonaktif Uji", status: "DISABLED", role: "STAFF" },
     ];
 
     for (const u of users) {
-      const uRes = await client.query(`
-        INSERT INTO users (organization_id, unit_id, email, display_name, password_hash, status)
-        VALUES ($1, $2, $3, $4, $5, $6)
+      await client.query(`
+        INSERT INTO users (id, organization_id, unit_id, email, display_name, password_hash, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (email) DO UPDATE 
         SET display_name = EXCLUDED.display_name,
             password_hash = EXCLUDED.password_hash,
-            status = EXCLUDED.status
-        RETURNING id;
-      `, [orgId, unitId, u.email, u.name, passwordHash, u.status]);
-
-      const userId = uRes.rows[0].id;
+            status = EXCLUDED.status;
+      `, [u.id, orgId, unitId, u.email, u.name, passwordHash, u.status]);
 
       // Assign role
       await client.query(`
         INSERT INTO user_roles (user_id, role_id)
         SELECT $1, r.id FROM roles r WHERE r.role_key = $2
         ON CONFLICT (user_id, role_id) DO NOTHING;
-      `, [userId, u.role]);
+      `, [u.id, u.role]);
     }
 
-    // 5. Letter Types & Numbering Policy (INACTIVE)
-    const policyRes = await client.query(`
-      INSERT INTO numbering_policies (organization_id, series_key, code, is_active, legacy_reconciled)
-      VALUES ($1, 'SERI_UMUM', 'P4I', false, false)
-      ON CONFLICT (organization_id, series_key) DO NOTHING
-      RETURNING id;
-    `, [orgId]);
-    const policyId = policyRes.rows[0]?.id;
-
+    // 5. Numbering Policy (SAFETY: STRICTLY INACTIVE)
+    const policyId = "d0000000-0000-4000-8000-000000000001";
     await client.query(`
-      INSERT INTO letter_types (organization_id, code, label, numbering_policy_id, is_active)
-      VALUES 
-        ($1, 'KET-MAGANG', 'Surat Keterangan Selesai Magang', $2, true),
-        ($1, 'TUGAS', 'Surat Tugas', $2, true),
-        ($1, 'UNDANGAN', 'Surat Undangan', $2, true)
-      ON CONFLICT (organization_id, code) DO NOTHING;
-    `, [orgId, policyId || null]);
+      INSERT INTO numbering_policies (id, organization_id, series_key, code, is_active, legacy_reconciled)
+      VALUES ($1, $2, 'SERI_UMUM', 'P4I', false, false)
+      ON CONFLICT (organization_id, series_key) DO NOTHING;
+    `, [policyId, orgId]);
+
+    // 6. Letter Types P0 (5 Jenis Surat Utama)
+    const types = [
+      { id: "c0000000-0000-4000-8000-000000000001", code: "KET-MAGANG", label: "Surat Keterangan Selesai Magang", priority: "P0" },
+      { id: "c0000000-0000-4000-8000-000000000002", code: "TUGAS", label: "Surat Tugas", priority: "P0" },
+      { id: "c0000000-0000-4000-8000-000000000003", code: "UNDANGAN", label: "Surat Undangan", priority: "P0" },
+      { id: "c0000000-0000-4000-8000-000000000004", code: "PERMOHONAN", label: "Surat Permohonan", priority: "P0" },
+      { id: "c0000000-0000-4000-8000-000000000005", code: "PENGANTAR", label: "Surat Pengantar", priority: "P0" },
+    ];
+
+    for (const t of types) {
+      await client.query(`
+        INSERT INTO letter_types (id, organization_id, code, label, priority, numbering_policy_id, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, true)
+        ON CONFLICT (organization_id, code) DO UPDATE 
+        SET label = EXCLUDED.label, priority = EXCLUDED.priority;
+      `, [t.id, orgId, t.code, t.label, t.priority, policyId]);
+    }
 
     await client.query("COMMIT;");
     console.log("[P4I-SEED] Seeding data uji lokal selesai.");
@@ -111,8 +116,10 @@ async function runSeedTest() {
     client.release();
     await pool.end();
   } catch (err) {
-    console.warn("[P4I-SEED] [BLOCKED] PostgreSQL lokal belum aktif / koneksi gagal.");
-    console.warn(`[P4I-SEED] Detail: ${err.message}`);
+    console.warn("================================================================================");
+    console.warn("[P4I-SEED: BLOCKED] PostgreSQL lokal belum aktif / koneksi gagal.");
+    console.warn(`Detail Error: ${err.message}`);
+    console.warn("================================================================================");
     await pool.end().catch(() => {});
   }
 }

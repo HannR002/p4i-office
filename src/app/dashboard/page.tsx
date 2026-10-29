@@ -21,9 +21,9 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const letters = db.getAllLetters(user.organizationId);
-  const letterTypes = db.getLetterTypes(user.organizationId);
-  const users = db.getAllUsers(user.organizationId);
+  const letters = await db.getAllLetters(user.organizationId, "ALL", user);
+  const letterTypes = await db.getLetterTypes(user.organizationId);
+  const users = await db.getAllUsers(user.organizationId);
 
   const draftCount = letters.filter((l) => l.status === "DRAFT").length;
   const inReviewCount = letters.filter((l) => l.status === "IN_REVIEW").length;

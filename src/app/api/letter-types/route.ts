@@ -8,6 +8,6 @@ export async function GET() {
     return NextResponse.json({ success: false, message: "Akses ditolak." }, { status: 401 });
   }
 
-  const types = db.getLetterTypes(user.organizationId);
+  const types = await db.getLetterTypes(user.organizationId);
   return NextResponse.json({ success: true, types });
 }

@@ -1,432 +1,168 @@
-import bcrypt from "bcryptjs";
-import { calculateContentHash } from "@/lib/security/hash";
-import { logAuditEvent } from "@/lib/audit";
+import { PostgresDatabaseStore } from "./postgres-repository";
+import { MemoryDatabaseStore } from "./memory-repository";
+import { checkPostgresConnection } from "./pool";
+import { 
+  IDatabaseStore, 
+  UserRecord, 
+  OrganizationRecord, 
+  LetterTypeRecord, 
+  LetterRevisionRecord, 
+  LetterRecord, 
+  UserContext, 
+  CreateDraftInput, 
+  AddRevisionInput, 
+  DatabaseHealthStatus 
+} from "./types";
 
-export interface UserRecord {
-  id: string;
-  organizationId: string;
-  unitId?: string;
-  email: string;
-  displayName: string;
-  passwordHash: string;
-  status: "ACTIVE" | "DISABLED" | "INVITED";
-  role: "SYSTEM_ADMIN" | "STAFF";
-  createdAt: string;
-}
+export * from "./types";
+export { getDatabaseUrl, getMaskedDatabaseUrl, checkPostgresConnection } from "./pool";
 
-export interface OrganizationRecord {
-  id: string;
-  legalName: string;
-  acronym: string;
-  addressPlaceholder: string;
-  isVerified: boolean;
-}
-
-export interface LetterTypeRecord {
-  id: string;
-  organizationId: string;
-  code: string;
-  label: string;
-  priority: "P0" | "P1";
-  isActive: boolean;
-  numberingPolicyActive: boolean;
-}
-
-export interface LetterRevisionRecord {
-  id: string;
-  letterId: string;
-  version: number;
-  subject: string;
-  recipientName: string;
-  classification: "PUBLIC" | "INTERNAL" | "CONFIDENTIAL";
-  plannedDate: string;
-  content: Record<string, unknown>;
-  contentSha256: string;
-  changeSummary?: string;
-  createdBy: string;
-  createdByName?: string;
-  createdAt: string;
-}
-
-export interface LetterRecord {
-  id: string;
-  organizationId: string;
-  unitId?: string;
-  letterTypeId: string;
-  letterTypeCode: string;
-  letterTypeLabel: string;
-  authorId: string;
-  authorName: string;
-  subject: string;
-  recipientName: string;
-  classification: "PUBLIC" | "INTERNAL" | "CONFIDENTIAL";
-  plannedDate: string;
-  status: "DRAFT" | "IN_REVIEW" | "RETURNED" | "REVIEWED" | "APPROVED" | "NUMBERED" | "VOIDED";
-  currentRevisionNo: number;
-  officialNumber: null; // Strictly null in Sprint 1A
-  createdAt: string;
-  updatedAt: string;
-}
-
-// In-Memory Database Store dengan isolasi organisasi dan seeded test fixtures
-class LocalDatabaseStore {
-  private organization: OrganizationRecord;
-  private users: Map<string, UserRecord> = new Map();
-  private letterTypes: Map<string, LetterTypeRecord> = new Map();
-  private letters: Map<string, LetterRecord> = new Map();
-  private revisions: Map<string, LetterRevisionRecord[]> = new Map();
+class AdaptiveDatabaseRouter implements IDatabaseStore {
+  private pgStore: PostgresDatabaseStore;
+  private memStore: MemoryDatabaseStore;
+  private connectionChecked = false;
+  private isPostgresAvailable = false;
+  private lastCheckTime = 0;
+  private checkIntervalMs = 15000; // Cek ulang setiap 15 detik
 
   constructor() {
-    this.organization = {
-      id: "org-p4i-yayasan-001",
-      legalName: "Yayasan Pusat Pendidikan dan Penelitian Pembangunan Indonesia",
-      acronym: "Yayasan P4I",
-      addressPlaceholder: "Kop dan identitas resmi belum diverifikasi pengurus",
-      isVerified: false,
-    };
-    this.initSeeds();
+    this.pgStore = new PostgresDatabaseStore();
+    this.memStore = new MemoryDatabaseStore();
   }
 
-  private initSeeds() {
-    const passwordHash = bcrypt.hashSync("Password123!", 10);
+  private async getActiveStore(): Promise<IDatabaseStore> {
+    const now = Date.now();
+    if (!this.connectionChecked || now - this.lastCheckTime > this.checkIntervalMs) {
+      this.lastCheckTime = now;
+      this.connectionChecked = true;
+      const conn = await checkPostgresConnection();
+      this.isPostgresAvailable = conn.connected;
 
-    const testUsers: UserRecord[] = [
-      {
-        id: "usr-admin-01",
-        organizationId: this.organization.id,
-        email: "admin.test@p4i.local",
-        displayName: "Admin Sistem (Uji)",
-        passwordHash,
-        status: "ACTIVE",
-        role: "SYSTEM_ADMIN",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "usr-staff-01",
-        organizationId: this.organization.id,
-        email: "staf.test@p4i.local",
-        displayName: "Staf Administrasi (Uji)",
-        passwordHash,
-        status: "ACTIVE",
-        role: "STAFF",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "usr-disabled-01",
-        organizationId: this.organization.id,
-        email: "disabled.test@p4i.local",
-        displayName: "Staf Nonaktif (Uji)",
-        passwordHash,
-        status: "DISABLED",
-        role: "STAFF",
-        createdAt: new Date().toISOString(),
-      },
-    ];
-
-    testUsers.forEach((u) => this.users.set(u.email.toLowerCase(), u));
-
-    // Jenis surat dari SRS v1.0 dan P4I_Office_Paket_Sprint0.xlsx
-    const types: LetterTypeRecord[] = [
-      {
-        id: "type-magang",
-        organizationId: this.organization.id,
-        code: "KET-MAGANG",
-        label: "Surat Keterangan Selesai Magang",
-        priority: "P0",
-        isActive: true,
-        numberingPolicyActive: false,
-      },
-      {
-        id: "type-tugas",
-        organizationId: this.organization.id,
-        code: "TUGAS",
-        label: "Surat Tugas",
-        priority: "P0",
-        isActive: true,
-        numberingPolicyActive: false,
-      },
-      {
-        id: "type-undangan",
-        organizationId: this.organization.id,
-        code: "UNDANGAN",
-        label: "Surat Undangan",
-        priority: "P0",
-        isActive: true,
-        numberingPolicyActive: false,
-      },
-      {
-        id: "type-permohonan",
-        organizationId: this.organization.id,
-        code: "PERMOHONAN",
-        label: "Surat Permohonan",
-        priority: "P0",
-        isActive: true,
-        numberingPolicyActive: false,
-      },
-      {
-        id: "type-pengantar",
-        organizationId: this.organization.id,
-        code: "PENGANTAR",
-        label: "Surat Pengantar",
-        priority: "P0",
-        isActive: true,
-        numberingPolicyActive: false,
-      },
-    ];
-
-    types.forEach((t) => this.letterTypes.set(t.id, t));
-  }
-
-  // --- Users ---
-  getUserByEmail(email: string): UserRecord | null {
-    return this.users.get(email.toLowerCase()) || null;
-  }
-
-  getUserById(id: string): UserRecord | null {
-    for (const u of this.users.values()) {
-      if (u.id === id) return u;
-    }
-    return null;
-  }
-
-  getAllUsers(orgId: string): UserRecord[] {
-    return Array.from(this.users.values()).filter((u) => u.organizationId === orgId);
-  }
-
-  updateUserStatus(userId: string, status: "ACTIVE" | "DISABLED", actorId: string): UserRecord | null {
-    const user = this.getUserById(userId);
-    if (!user) return null;
-    user.status = status;
-
-    logAuditEvent({
-      organizationId: user.organizationId,
-      actorId,
-      eventType: "USER_STATUS_UPDATED",
-      entityType: "user",
-      entityId: userId,
-      metadata: { newStatus: status },
-    });
-
-    return user;
-  }
-
-  // --- Organization & Types ---
-  getOrganization(): OrganizationRecord {
-    return this.organization;
-  }
-
-  getLetterTypes(orgId: string): LetterTypeRecord[] {
-    return Array.from(this.letterTypes.values()).filter((t) => t.organizationId === orgId);
-  }
-
-  getLetterTypeById(typeId: string): LetterTypeRecord | null {
-    return this.letterTypes.get(typeId) || null;
-  }
-
-  // --- Letters & Revisions ---
-  getAllLetters(orgId: string, statusFilter?: string): LetterRecord[] {
-    let list = Array.from(this.letters.values()).filter((l) => l.organizationId === orgId);
-    if (statusFilter && statusFilter !== "ALL") {
-      list = list.filter((l) => l.status === statusFilter);
-    }
-    return list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }
-
-  getLetterById(letterId: string, orgId: string): LetterRecord | null {
-    const letter = this.letters.get(letterId);
-    if (!letter || letter.organizationId !== orgId) return null;
-    return letter;
-  }
-
-  getLetterRevisions(letterId: string): LetterRevisionRecord[] {
-    return this.revisions.get(letterId) || [];
-  }
-
-  createDraft(
-    data: {
-      letterTypeId: string;
-      subject: string;
-      recipientName: string;
-      classification: "PUBLIC" | "INTERNAL" | "CONFIDENTIAL";
-      plannedDate: string;
-      content: Record<string, unknown>;
-    },
-    author: { id: string; name: string; organizationId: string }
-  ): { letter: LetterRecord; revision: LetterRevisionRecord } {
-    const letterType = this.getLetterTypeById(data.letterTypeId);
-    if (!letterType) {
-      throw new Error("Jenis surat tidak ditemukan.");
+      if (this.isPostgresAvailable) {
+        console.log("[P4I-DB] Mode Aktif: REAL_POSTGRES (Terhubung ke PostgreSQL riil).");
+      } else {
+        console.warn(
+          `[P4I-DB: NOTICE] Layanan PostgreSQL lokal offline (${conn.error || "ECONNREFUSED"}). ` +
+          "Adapter in-memory fail-safe aktif untuk menjaga ketersediaan sistem lokal."
+        );
+      }
     }
 
-    const letterId = `let-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const now = new Date().toISOString();
-
-    const revisionContent = data.content || {};
-    const contentSha256 = calculateContentHash(revisionContent);
-
-    const initialRevision: LetterRevisionRecord = {
-      id: `rev-${Date.now()}-v1`,
-      letterId,
-      version: 1,
-      subject: data.subject,
-      recipientName: data.recipientName,
-      classification: data.classification,
-      plannedDate: data.plannedDate,
-      content: revisionContent,
-      contentSha256,
-      changeSummary: "Pembuatan draf awal (v1)",
-      createdBy: author.id,
-      createdByName: author.name,
-      createdAt: now,
-    };
-
-    const newLetter: LetterRecord = {
-      id: letterId,
-      organizationId: author.organizationId,
-      letterTypeId: letterType.id,
-      letterTypeCode: letterType.code,
-      letterTypeLabel: letterType.label,
-      authorId: author.id,
-      authorName: author.name,
-      subject: data.subject,
-      recipientName: data.recipientName,
-      classification: data.classification,
-      plannedDate: data.plannedDate,
-      status: "DRAFT",
-      currentRevisionNo: 1,
-      officialNumber: null, // STRICTLY NULL
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.letters.set(letterId, newLetter);
-    this.revisions.set(letterId, [initialRevision]);
-
-    logAuditEvent({
-      organizationId: author.organizationId,
-      actorId: author.id,
-      eventType: "LETTER_DRAFT_CREATED",
-      entityType: "letter",
-      entityId: letterId,
-      metadata: {
-        version: 1,
-        subject: data.subject,
-        sha256: contentSha256,
-      },
-    });
-
-    return { letter: newLetter, revision: initialRevision };
+    return this.isPostgresAvailable ? this.pgStore : this.memStore;
   }
 
-  /**
-   * Menambahkan revisi baru (IMMUTABLE: Revisi sebelumnya tidak diubah).
-   */
-  addRevision(
+  async getHealthStatus(): Promise<DatabaseHealthStatus> {
+    const conn = await checkPostgresConnection();
+    this.isPostgresAvailable = conn.connected;
+    this.connectionChecked = true;
+    this.lastCheckTime = Date.now();
+
+    if (conn.connected) {
+      return await this.pgStore.getHealthStatus();
+    } else {
+      const memHealth = await this.memStore.getHealthStatus();
+      return {
+        ...memHealth,
+        errorDetail: conn.error,
+        latencyMs: conn.latencyMs,
+      };
+    }
+  }
+
+  async getUserByEmail(email: string): Promise<UserRecord | null> {
+    const store = await this.getActiveStore();
+    return store.getUserByEmail(email);
+  }
+
+  async getUserById(id: string): Promise<UserRecord | null> {
+    const store = await this.getActiveStore();
+    return store.getUserById(id);
+  }
+
+  async getAllUsers(orgId: string): Promise<UserRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getAllUsers(orgId);
+  }
+
+  async updateUserStatus(
+    userId: string, 
+    status: "ACTIVE" | "DISABLED", 
+    actorId: string
+  ): Promise<UserRecord | null> {
+    const store = await this.getActiveStore();
+    return store.updateUserStatus(userId, status, actorId);
+  }
+
+  async getOrganization(): Promise<OrganizationRecord> {
+    const store = await this.getActiveStore();
+    return store.getOrganization();
+  }
+
+  async getLetterTypes(orgId: string): Promise<LetterTypeRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getLetterTypes(orgId);
+  }
+
+  async getLetterTypeById(typeIdOrCode: string): Promise<LetterTypeRecord | null> {
+    const store = await this.getActiveStore();
+    return store.getLetterTypeById(typeIdOrCode);
+  }
+
+  async getAllLetters(
+    orgId: string, 
+    statusFilter?: string, 
+    userContext?: UserContext
+  ): Promise<LetterRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getAllLetters(orgId, statusFilter, userContext);
+  }
+
+  async getLetterById(
+    letterId: string, 
+    orgId: string, 
+    userContext?: UserContext
+  ): Promise<LetterRecord | null> {
+    const store = await this.getActiveStore();
+    return store.getLetterById(letterId, orgId, userContext);
+  }
+
+  async getLetterRevisions(letterId: string): Promise<LetterRevisionRecord[]> {
+    const store = await this.getActiveStore();
+    return store.getLetterRevisions(letterId);
+  }
+
+  async createDraft(
+    data: CreateDraftInput,
+    author: UserContext | { id: string; name: string; organizationId: string }
+  ): Promise<{ letter: LetterRecord; revision: LetterRevisionRecord }> {
+    const store = await this.getActiveStore();
+    return store.createDraft(data, author);
+  }
+
+  async addRevision(
     letterId: string,
-    data: {
-      subject: string;
-      recipientName: string;
-      classification: "PUBLIC" | "INTERNAL" | "CONFIDENTIAL";
-      plannedDate: string;
-      content: Record<string, unknown>;
-      changeSummary?: string;
-    },
-    author: { id: string; name: string; organizationId: string }
-  ): { letter: LetterRecord; revision: LetterRevisionRecord } {
-    const letter = this.getLetterById(letterId, author.organizationId);
-    if (!letter) {
-      throw new Error("Surat tidak ditemukan.");
-    }
-
-    if (letter.status !== "DRAFT" && letter.status !== "RETURNED") {
-      throw new Error(`Surat dalam status ${letter.status} tidak dapat disunting.`);
-    }
-
-    const currentRevisions = this.revisions.get(letterId) || [];
-    const nextVersion = letter.currentRevisionNo + 1;
-    const now = new Date().toISOString();
-
-    const revisionContent = data.content || {};
-    const contentSha256 = calculateContentHash(revisionContent);
-
-    const newRevision: LetterRevisionRecord = {
-      id: `rev-${Date.now()}-v${nextVersion}`,
-      letterId,
-      version: nextVersion,
-      subject: data.subject,
-      recipientName: data.recipientName,
-      classification: data.classification,
-      plannedDate: data.plannedDate,
-      content: revisionContent,
-      contentSha256,
-      changeSummary: data.changeSummary || `Pembaruan revisi ke-${nextVersion}`,
-      createdBy: author.id,
-      createdByName: author.name,
-      createdAt: now,
-    };
-
-    // Tambahkan ke riwayat tanpa mengubah array revisi terdahulu
-    this.revisions.set(letterId, [...currentRevisions, newRevision]);
-
-    // Update metadata surat saat ini
-    letter.currentRevisionNo = nextVersion;
-    letter.subject = data.subject;
-    letter.recipientName = data.recipientName;
-    letter.classification = data.classification;
-    letter.plannedDate = data.plannedDate;
-    letter.updatedAt = now;
-
-    logAuditEvent({
-      organizationId: author.organizationId,
-      actorId: author.id,
-      eventType: "LETTER_REVISION_CREATED",
-      entityType: "letter",
-      entityId: letterId,
-      metadata: {
-        version: nextVersion,
-        sha256: contentSha256,
-        changeSummary: data.changeSummary,
-      },
-    });
-
-    return { letter, revision: newRevision };
+    data: AddRevisionInput,
+    author: UserContext
+  ): Promise<{ letter: LetterRecord; revision: LetterRevisionRecord }> {
+    const store = await this.getActiveStore();
+    return store.addRevision(letterId, data, author);
   }
 
-  submitForReview(letterId: string, author: { id: string; organizationId: string }): LetterRecord {
-    const letter = this.getLetterById(letterId, author.organizationId);
-    if (!letter) {
-      throw new Error("Surat tidak ditemukan.");
-    }
-    if (letter.status !== "DRAFT") {
-      throw new Error(`Hanya draf berstatus DRAFT yang dapat diajukan (status saat ini: ${letter.status}).`);
-    }
-
-    letter.status = "IN_REVIEW";
-    letter.updatedAt = new Date().toISOString();
-
-    logAuditEvent({
-      organizationId: author.organizationId,
-      actorId: author.id,
-      eventType: "LETTER_SUBMITTED_FOR_REVIEW",
-      entityType: "letter",
-      entityId: letterId,
-      metadata: { version: letter.currentRevisionNo },
-    });
-
-    return letter;
+  async submitForReview(
+    letterId: string, 
+    author: UserContext
+  ): Promise<LetterRecord> {
+    const store = await this.getActiveStore();
+    return store.submitForReview(letterId, author);
   }
 
-  /**
-   * PENCEGAHAN PENOMORAN RESMI PADA SPRINT 1A.
-   * Fungsi ini secara sengaja melempar eksepsi untuk memastikan tidak ada alokasi nomor fiktif.
-   */
   allocateOfficialNumber(): never {
     throw new Error(
-      "BLOCKED: Penomoran surat resmi terkunci pada Sprint 1A! " +
+      "BLOCKED: Penomoran surat resmi terkunci pada Sprint 1B! " +
       "Syarat pembukaan: verifikasi register arsip lama (D-01), SOP reset nomor (D-02), dan mandat pejabat (D-04) disahkan oleh Pengurus Yayasan."
     );
   }
 }
 
 // Global Singleton Database Instance
-export const db = new LocalDatabaseStore();
+export const db = new AdaptiveDatabaseRouter();

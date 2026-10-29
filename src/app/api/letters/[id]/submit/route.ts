@@ -8,14 +8,16 @@ export async function POST(
 ) {
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ success: false, message: "Akses ditolak." }, { status: 401 });
+    return NextResponse.json({ success: false, message: "Akses ditolak: Silakan masuk." }, { status: 401 });
   }
 
   const { id } = await context.params;
 
   try {
-    const updatedLetter = db.submitForReview(id, {
+    const updatedLetter = await db.submitForReview(id, {
       id: user.id,
+      name: user.displayName,
+      role: user.role,
       organizationId: user.organizationId,
     });
 
@@ -26,6 +28,9 @@ export async function POST(
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Gagal mengajukan draf.";
+    if (errorMsg.includes("Akses ditolak")) {
+      return NextResponse.json({ success: false, message: errorMsg }, { status: 403 });
+    }
     return NextResponse.json({ success: false, message: errorMsg }, { status: 400 });
   }
 }

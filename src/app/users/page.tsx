@@ -38,7 +38,7 @@ export default async function UsersPage() {
     );
   }
 
-  const allUsers = db.getAllUsers(user.organizationId);
+  const allUsers = await db.getAllUsers(user.organizationId);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

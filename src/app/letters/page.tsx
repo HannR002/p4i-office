@@ -17,7 +17,7 @@ export default async function LettersPage(props: {
 
   const searchParams = await props.searchParams;
   const statusFilter = searchParams.status || "ALL";
-  const letters = db.getAllLetters(user.organizationId, statusFilter);
+  const letters = await db.getAllLetters(user.organizationId, statusFilter, user);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

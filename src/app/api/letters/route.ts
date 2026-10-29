@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") || "ALL";
 
-  const letters = db.getAllLetters(user.organizationId, status);
+  const letters = await db.getAllLetters(user.organizationId, status, user);
   return NextResponse.json({ success: true, letters });
 }
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const sanitizedRecipient = sanitizeString(parsed.data.recipientName);
     const sanitizedContent = sanitizeObject(parsed.data.content);
 
-    const result = db.createDraft(
+    const result = await db.createDraft(
       {
         letterTypeId: parsed.data.letterTypeId,
         subject: sanitizedSubject,
