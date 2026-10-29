@@ -37,7 +37,7 @@ Tujuan utama Sprint 1B adalah menutup blocker database dan mentransisikan fitur 
 ### 2. Commit SHA dan Nama Branch
 - **Base Branch:** `master` (Commit Sprint 1A: `b801b7274092bbf18e6931fcdd54203a95d7328f`)
 - **Working Branch:** `feat/sprint-1b-db-integration`
-- **Target Commit:** Pekerjaan ini siap di-commit ke branch `feat/sprint-1b-db-integration`.
+- **Commit SHA Sprint 1B:** `f1eaf04599dab69eed9794d6d04cb20596061cd4`
 
 ---
 
