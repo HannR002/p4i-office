@@ -89,7 +89,11 @@ export default function ApprovalsPage() {
       const res = await fetch("/api/mandates");
       if (res.ok) {
         const data = await res.json();
-        setMandates(data.mandates || []);
+        const list = data.mandates || data.data || [];
+        setMandates(list);
+        const active = list.find((m: SignatoryMandate) => m.status === "ACTIVE" && m.canApprove);
+        if (active) setSelectedMandateId(active.id);
+        else if (list.length > 0) setSelectedMandateId(list[0].id);
       }
     } catch {
       // ignore

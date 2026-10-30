@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       mandates,
+      data: mandates,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Gagal memuat daftar mandat.";

@@ -1,3 +1,5 @@
+export type UserRole = "SYSTEM_ADMIN" | "STAFF" | "REVIEWER" | "PENGURUS_YAYASAN";
+
 export interface UserRecord {
   id: string;
   organizationId: string;
@@ -6,7 +8,7 @@ export interface UserRecord {
   displayName: string;
   passwordHash: string;
   status: "ACTIVE" | "DISABLED" | "INVITED";
-  role: "SYSTEM_ADMIN" | "STAFF" | "REVIEWER";
+  role: UserRole;
   createdAt: string;
 }
 
@@ -86,7 +88,7 @@ export interface UserContext {
   name?: string;
   displayName?: string;
   email?: string;
-  role: "SYSTEM_ADMIN" | "STAFF" | "REVIEWER";
+  role: UserRole;
   organizationId: string;
 }
 
@@ -139,11 +141,13 @@ export interface ApprovalRequestRecord {
   letterSubject?: string;
   letterTypeCode?: string;
   letterTypeLabel?: string;
+  letterAuthorId?: string;
   revisionId: string;
   revisionVersion: number;
   contentSha256: string;
   submittedBy: string;
   submittedByName?: string;
+  submitterName?: string;
   submittedAt: string;
   status: "PENDING" | "IN_REVIEW" | "APPROVED" | "CHANGES_REQUESTED" | "REJECTED" | "SUPERSEDED";
   submissionNotes?: string | null;
@@ -162,6 +166,7 @@ export interface ApprovalStepRecord {
   reviewerName?: string;
   mandateId: string;
   mandateDecreeNumber?: string;
+  decreeNumber?: string;
   decision: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED";
   decisionContentSha256: string;
   comments?: string | null;
