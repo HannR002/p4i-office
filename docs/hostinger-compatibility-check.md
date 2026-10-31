@@ -178,4 +178,3 @@ Hostinger Business Web Hosting tidak menyediakan *long-running daemon supervisor
 > - **DILARANG** melakukan deployment ke akun live Hostinger pada sprint ini.
 > - **DILARANG** mengubah konfigurasi PHP atau database di server produksi.
 > - Seluruh verifikasi di atas diselesaikan secara lokal dan siap diterapkan seketika otorisasi deployment resmi diberikan oleh Ketua/Pengurus Yayasan P4I dan disetujui auditor GPT-6.
-

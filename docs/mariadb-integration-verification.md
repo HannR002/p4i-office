@@ -111,4 +111,3 @@ Duration: 3.92s
 1. Database MariaDB 10.4+ InnoDB terbukti aktif dan terintegrasi penuh dengan Laravel 13.
 2. Tidak ada ketergantungan pada SQLite untuk pengujian integrasi database.
 3. Immutability revisi surat dan audit log terlindungi secara fisik pada level mesin database InnoDB, sehingga tidak dapat dimanipulasi bahkan oleh query SQL langsung (*raw SQL bypass proof*).
-

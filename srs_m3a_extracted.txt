@@ -1,0 +1,111 @@
+Addendum SRS — Sprint 3A
+P4I Office v1.0  |  Penomoran simulasi, agenda dan rekonsiliasi register  |  Tidak mengaktifkan penerbitan resmi
+1. Tujuan dan batasan
+Sprint 3A membangun fondasi penomoran surat, import register historis, simulasi counter dan buku agenda persuratan agar aturan bisnis dapat diuji tanpa menerbitkan surat resmi. Sprint ini merupakan desain dan implementasi fitur praproduksi setelah penutupan temuan mayor Sprint 2.
+Tidak termasuk: penerbitan nomor resmi, legalisasi tanda tangan, pengiriman eksternal, migrasi data nyata tanpa verifikasi, dan deployment produksi. Status APPROVED dari Sprint 2 tetap hanya berarti persetujuan isi draf.
+2. Prinsip dan aturan bisnis
+Pola historis yang ditemukan pada templat: [urut]/P4I/[bulan Romawi]/[tahun]. Ini contoh, bukan pengesahan SOP definitif.
+Scope urutan (organisasi/jenis/seri/tahun atau bulan) harus merupakan konfigurasi yang diverifikasi, tidak ditetapkan dengan asumsi.
+Nomor dari berkas lama disimpan apa adanya, bersama metadata sumber dan penanda tingkat verifikasi. Tidak boleh dirombak otomatis.
+Simulasi menjalankan pola dan counter secara terpisah dari register resmi; hasil jelas bertanda SIMULASI dan tidak menjadi official_number.
+Kunci unik dan transaksi atomik wajib mencegah dua nomor identik; uji konflik tetap dilakukan pada PostgreSQL nyata.
+Saat surat dibatalkan pasca-penerbitan (kelak), nomor yang dipakai tidak dapat digunakan ulang; kebutuhan penanganan gap harus masuk SOP.
+Buku agenda surat masuk memakai nomor agenda internal berbeda dari nomor asli instansi pengirim.
+3. Functional Requirements — Sprint 3A
+ID
+Kebutuhan fungsional
+NR-01
+Administrator dapat membuat rancangan numbering policy tanpa mengaktifkannya.
+NR-02
+Tersedia preview string nomor dari data simulasi dan aturan yang dipilih.
+NR-03
+Mendukung ruang lingkup nomor per organisasi, seri, tahun, dan dimensi tambahan yang disahkan.
+NR-04
+Sistem memvalidasi format bulan Romawi dan pergantian tahun sesuai policy.
+NR-05
+Sistem menerima register lama sebagai staging CSV/XLSX melalui validasi terpisah.
+NR-06
+Deteksi duplikasi nomor, bentrok seri, data tidak lengkap, dan tanggal tidak konsisten.
+NR-07
+Setiap rekam historis memiliki sumber, catatan verifikasi dan reviewer rekonsiliasi.
+NR-08
+Tidak ada historical baseline yang diaktifkan dari data belum terverifikasi.
+NR-09
+Simulasi alokasi nomor atomik di database test dan aman dari permintaan bersamaan.
+NR-10
+Simulasi idempotent untuk request yang sama, tidak menghabiskan dua urutan.
+NR-11
+Buku agenda draft memperlihatkan filter jenis, tanggal, unit, penerima dan status.
+NR-12
+Nomor surat keluar dan nomor agenda surat masuk dibedakan.
+NR-13
+Semua perubahan policy, impor dan simulasi menghasilkan event audit.
+NR-14
+Operasi dilindungi RBAC, kepemilikan organisasi dan validasi input.
+NR-15
+official_number tetap NULL dan FEATURE_NUMBERING_ACTIVE tetap false.
+NR-16
+Terdapat laporan readiness: verified / discrepancies / blocked; tidak ada klaim siap produksi semu.
+4. Kontrak data logis
+Entitas logis
+Atribut minimum & batasan
+numbering_policies
+id, org_id, series_code, format_pattern, scope_type, reset_policy, status=DRAFT/VERIFIED; versi dan audit metadata
+numbering_policy_scopes
+policy_id, org_id, letter_type_id, unit_id (opsional), valid_from/to, uniqueness constraints
+legacy_register_import_batches
+id, source_filename, source_hash, imported_by, uploaded_at, stage_status
+legacy_register_rows
+batch_id, raw_number, normalized_number, document_date, type, reference, verification_status, errors
+numbering_simulation_runs
+id, policy_version, run_context, requested_by, result, created_at; hanya hasil simulasi
+numbering_simulation_counters
+scope_key, year_key, last_number; hanya DB TEST atau namespace terisolasi
+agenda_entries
+id, org_id, direction, source_number, internal_agenda, letter_id nullable, date, status, metadata
+Nama tabel di atas merupakan kontrak logis, bukan perintah membuat tabel duplikat. Gemini harus merekonsiliasi dengan migration 0001–0003 sebelum menulis migration 0004. Sistem harus menghindari penyimpanan data pribadi yang tidak diperlukan.
+5. Alur proses dan gerbang aktivasi
+(1) Admin membuat policy DRAFT → (2) Register lama dimasukkan ke staging → (3) Validasi dan review anomali → (4) Simulasi alokasi di database test → (5) Hasil readiness dan laporan → (6) Pengurus menandatangani SOP/mandat serta memverifikasi baseline → (7) Aktivasi resmi menjadi proyek terpisah dengan uji dan persetujuan baru.
+6. Acceptance Criteria NR-01 s.d. NR-16
+ID
+Syarat penerimaan minimal
+NR-01
+Policy DRAFT dapat disimpan tanpa status ACTIVE
+NR-02
+Preview SIMULASI tidak sama dengan official_number
+NR-03
+Contoh format mengikuti policy, tidak hardcode
+NR-04
+Transisi tahun/bulan sesuai konfigurasi dan hasil tes
+NR-05
+Import contoh CSV berhasil staging tanpa mutasi nomor resmi
+NR-06
+Duplikat dan konflik dideteksi dan dilaporkan
+NR-07
+Sumber historis/peninjau tercatat
+NR-08
+Baseline tak terverifikasi tak dapat dipakai
+NR-09
+≥20 request paralel tidak menghasilkan nomor simulasi ganda
+NR-10
+Pengulangan idempotency key menghasilkan alokasi simulasi yang sama
+NR-11
+Agenda dapat dicari & difilter
+NR-12
+Nomor surat luar/agenda masuk berbeda
+NR-13
+Audit event tersimpan di PostgreSQL
+NR-14
+Uji akses lintas peran dan organisasi ditolak
+NR-15
+OFF dan null dipastikan dari backend + DB
+NR-16
+Readiness menampilkan status BLOCKED jika kebijakan/register belum disahkan
+7. Gate keamanan dan administrasi
+Tidak ada tombol API untuk ISSUED/NUMBERED resmi pada Sprint 3A.
+Seluruh akun dan nomor uji harus diberi label simulasi, tidak bercampur dengan data yayasan asli.
+Keputusan tentang format nomor, reset counter, seri SK, pejabat, atau kekosongan register lama wajib dibawa ke pengurus.
+Tidak boleh melakukan push remote, deployment, atau migrasi ke database lain tanpa izin.
+Di akhir Sprint 3A, laporan teknis harus memuat setiap NR dengan bukti aktual dan status PASS/FAIL/BLOCKED/NOT RUN.
+8. Rencana deliverables
+Gemini menyerahkan migration baru yang aman, unit dan integration tests, contoh seed terisolasi, screenshot UI, dokumentasi teknis, data mapping dan risk register. GPT melakukan audit serta menyusun laporan resmi Sprint 3A. Pengurus bertanggung jawab terhadap keputusan penomoran yang sah.
