@@ -151,3 +151,4 @@ Seluruh artefak dokumentasi teknis telah diserahkan di direktori `docs/`:
 >   - **Gemini IDE BERHENTI DI SINI.**
 >   - Tidak memulai konversi fitur Sprint M1 (Livewire draft editor, reviewer workflow modal, mandate management) sebelum evaluasi dan persetujuan resmi diberikan oleh **GPT-6** dan **Ketua/Pengurus Yayasan P4I**.
 >   - Fitur penomoran surat resmi (`official_number`) tetap terkunci pada status **OFF / NULL**.
+

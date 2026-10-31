@@ -92,3 +92,4 @@ Fondasi Sprint M0 belum memiliki kode legacy yang terikat pada dependensi pihak 
 - Branch `master` pada `D:\p4i-office-laravel` dipertahankan utuh pada commit Sprint M0 (`4017431`) sebagai titik pemulihan (*rollback point*).
 - Seluruh pekerjaan upgrade dilakukan pada working branch terisolasi: `feat/sprint-m0.1-laravel-13-upgrade`.
 - Commit perubahan: `64d01d6` (*feat(m0.1): upgrade to Laravel 13, verify MariaDB InnoDB, add engine triggers and regression tests*).
+
